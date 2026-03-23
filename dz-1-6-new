@@ -1,6 +1,4 @@
 
-
-
 def create_matrix(n, value=0.0):
     """Создает квадратную матрицу n x n, заполненную value"""
     return [[value for _ in range(n)] for _ in range(n)]
@@ -15,7 +13,7 @@ def identity_matrix(n):
 
 
 def copy_matrix(A):
-    """Создает глубокую копию матрицы"""
+    """Создает копию матрицы"""
     return [row[:] for row in A]
 
 
@@ -23,14 +21,14 @@ def matrix_multiply(A, B):
     """Умножение матриц A и B"""
     n = len(A)
     result = create_matrix(n)
-    
+
     for i in range(n):
         for j in range(n):
             s = 0.0
             for k in range(n):
                 s += A[i][k] * B[k][j]
             result[i][j] = s
-    
+
     return result
 
 
@@ -44,19 +42,19 @@ def swap_rows_partial(matrix, row1, row2, col_limit):
     for j in range(col_limit):
         matrix[row1][j], matrix[row2][j] = matrix[row2][j], matrix[row1][j]
 
-
+    """decimals - при округлении"""
 def round_matrix(matrix, decimals=8):
     """Округляет все элементы матрицы"""
     n = len(matrix)
     return [[round(matrix[i][j], decimals) for j in range(n)] for i in range(n)]
 
-
+    """precision - при выводе чисел"""
 def print_matrix(name, matrix, precision=8):
     """Выводит матрицу с округлением"""
     print(f"\n{name}:")
     rounded = round_matrix(matrix, precision)
     for row in rounded:
-        print("  " + " ".join(f"{val:{precision+3}.{precision}f}" for val in row))
+        print("  " + " ".join(f"{val:{precision +3}.{precision}f}" for val in row))
 
 
 def lu_decomposition(A):
@@ -68,7 +66,7 @@ def lu_decomposition(A):
     L = identity_matrix(n)
     U = copy_matrix(A)
     P = identity_matrix(n)
-    
+
     for k in range(n - 1):
         # Поиск главного элемента в k-м столбце
         max_idx = k
@@ -77,25 +75,25 @@ def lu_decomposition(A):
             if abs(U[i][k]) > max_val:
                 max_val = abs(U[i][k])
                 max_idx = i
-        
+
         # Перестановка строк при необходимости
         if max_idx != k:
             swap_rows(U, k, max_idx)
             swap_rows(P, k, max_idx)
             if k > 0:
                 swap_rows_partial(L, k, max_idx, k)
-        
+
         # Проверка на вырожденность
         if abs(U[k][k]) < 1e-15:
             raise ValueError("Матрица вырождена")
-        
+
         # Прямой ход метода Гаусса
         for i in range(k + 1, n):
             factor = U[i][k] / U[k][k]
             L[i][k] = factor
             for j in range(k, n):
                 U[i][j] -= factor * U[k][j]
-    
+
     return L, U, P
 
 
@@ -103,13 +101,13 @@ def forward_substitution(L, b):
     """Решение системы L·y = b (L - нижняя треугольная)"""
     n = len(L)
     y = [0.0] * n
-    
+
     for i in range(n):
         total = 0.0
         for j in range(i):
             total += L[i][j] * y[j]
         y[i] = (b[i] - total) / L[i][i]
-    
+
     return y
 
 
@@ -117,13 +115,13 @@ def backward_substitution(U, y):
     """Решение системы U·x = y (U - верхняя треугольная)"""
     n = len(U)
     x = [0.0] * n
-    
+
     for i in range(n - 1, -1, -1):
         total = 0.0
         for j in range(i + 1, n):
             total += U[i][j] * x[j]
         x[i] = (y[i] - total) / U[i][i]
-    
+
     return x
 
 
@@ -131,11 +129,11 @@ def apply_permutation(P, v):
     """Умножение матрицы перестановок P на вектор v"""
     n = len(P)
     result = [0.0] * n
-    
+
     for i in range(n):
         for j in range(n):
             result[i] += P[i][j] * v[j]
-    
+
     return result
 
 
@@ -144,29 +142,29 @@ def inverse_matrix(A):
     Вычисляет обратную матрицу через LU-разложение
     """
     n = len(A)
-    
+
     # LU-разложение
     L, U, P = lu_decomposition(A)
-    
+
     # Вывод результатов разложения
     print("\n" + "=" * 60)
     print("LU-РАЗЛОЖЕНИЕ")
     print("=" * 60)
-    
+
     print_matrix("Матрица A (исходная)", A)
     print_matrix("Матрица L (нижняя треугольная)", L)
     print_matrix("Матрица U (верхняя треугольная)", U)
     print_matrix("Матрица перестановок P", P)
-    
+
     # Проверка P·L·U = A
     print("\n" + "-" * 40)
     print("ПРОВЕРКА: P·L·U = A")
     print("-" * 40)
-    
+
     PL = matrix_multiply(P, L)
     PLU = matrix_multiply(PL, U)
     print_matrix("Результат P·L·U", PLU, precision=10)
-    
+
     # Сравнение с исходной матрицей
     is_equal = True
     for i in range(n):
@@ -174,33 +172,33 @@ def inverse_matrix(A):
             if abs(PLU[i][j] - A[i][j]) > 1e-8:
                 is_equal = False
                 break
-    
+
     if is_equal:
         print("\nP·L·U равна исходной матрице A")
     else:
         print("\nЕсть небольшие расхождения (в пределах машинной точности)")
-    
+
     # Вычисление обратной матрицы
     I = identity_matrix(n)
     A_inv = create_matrix(n)
-    
+
     for j in range(n):
         # Берем j-й столбец единичной матрицы
         e = [I[i][j] for i in range(n)]
-        
+
         # Применяем перестановку
         b = apply_permutation(P, e)
-        
+
         # Решаем L·y = b
         y = forward_substitution(L, b)
-        
+
         # Решаем U·x = y
         x = backward_substitution(U, y)
-        
+
         # Записываем в j-й столбец обратной матрицы
         for i in range(n):
             A_inv[i][j] = x[i]
-    
+
     return A_inv
 
 
@@ -214,7 +212,7 @@ def matrix_norm(A):
     return s ** 0.5
 
 
-# ================== ОСНОВНАЯ ПРОГРАММА ==================
+###
 
 print("=" * 70)
 print("ОБРАЩЕНИЕ МАТРИЦЫ С ПОМОЩЬЮ LU-РАЗЛОЖЕНИЯ")
@@ -237,13 +235,13 @@ A = []
 for i in range(n):
     while True:
         try:
-            row_str = input(f"Строка {i+1}: ").strip()
+            row_str = input(f"Строка { i +1}: ").strip()
             row = list(map(float, row_str.split()))
-            
+
             if len(row) != n:
                 print(f"Ошибка! В строке должно быть {n} чисел")
                 continue
-            
+
             A.append(row)
             break
         except ValueError:
@@ -254,22 +252,22 @@ A = [list(row) for row in A]  # Преобразуем к списку спис�
 # Вычисление обратной матрицы
 try:
     A_inv = inverse_matrix(A)
-    
+
     # Вывод результатов
     print("\n" + "=" * 60)
     print("ОБРАТНАЯ МАТРИЦА")
     print("=" * 60)
-    
+
     print_matrix("Обратная матрица A⁻¹", A_inv, precision=8)
-    
+
     # Проверка A·A⁻¹ = I
     print("\n" + "-" * 40)
     print("ПРОВЕРКА: A·A⁻¹ = I")
     print("-" * 40)
-    
+
     product = matrix_multiply(A, A_inv)
     print_matrix("Результат A·A⁻¹", product, precision=10)
-    
+
     # Оценка ошибки
     I = identity_matrix(n)
     error_norm = 0.0
@@ -279,9 +277,9 @@ try:
             diff = product[i][j] - expected
             error_norm += diff * diff
     error_norm = error_norm ** 0.5
-    
+
     print(f"\nНорма ошибки ||A·A⁻¹ - I||: {error_norm:.2e}")
-    
+
     if error_norm < 1e-10:
         print(" Отличная точность")
     elif error_norm < 1e-8:
@@ -290,15 +288,15 @@ try:
         print(" Приемлемая точность")
     else:
         print("Низкая точность (возможно, матрица плохо обусловлена)")
-    
+
     # Дополнительная проверка A⁻¹·A
     print("\n" + "-" * 40)
     print("ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: A⁻¹·A = I")
     print("-" * 40)
-    
+
     product2 = matrix_multiply(A_inv, A)
     print_matrix("Результат A⁻¹·A", product2, precision=10)
-    
+
     error2_norm = 0.0
     for i in range(n):
         for j in range(n):
@@ -306,9 +304,9 @@ try:
             diff = product2[i][j] - expected
             error2_norm += diff * diff
     error2_norm = error2_norm ** 0.5
-    
+
     print(f"\nНорма ошибки ||A⁻¹·A - I||: {error2_norm:.2e}")
-    
+
 except Exception as e:
     print(f"\nОшибка: {e}")
     print("Матрица, вероятно, вырождена или плохо обусловлена")
@@ -316,3 +314,5 @@ except Exception as e:
 print("\n" + "=" * 70)
 print("РАБОТА ПРОГРАММЫ ЗАВЕРШЕНА")
 print("=" * 70)
+#4 3 1, 0 1 -3, 4 0 2;
+# 9 5 1, 10 3 2, 43 11 8;
