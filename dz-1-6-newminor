@@ -1,1 +1,379 @@
 
+import math
+
+def create_matrix(n, value=0.0):
+    """Создает квадратную матрицу n x n, заполненную value"""
+    return [[value for _ in range(n)] for _ in range(n)]
+
+
+def identity_matrix(n):
+    """Создает единичную матрицу n x n"""
+    I = create_matrix(n)
+    for i in range(n):
+        I[i][i] = 1.0
+    return I
+
+
+def copy_matrix(A):
+    """Создает копию матрицы"""
+    return [row[:] for row in A]
+
+
+def matrix_multiply(A, B):
+    """Умножение матриц A и B"""
+    n = len(A)
+    result = create_matrix(n)
+    
+    for i in range(n):
+        for j in range(n):
+            s = 0.0
+            for k in range(n):
+                s += A[i][k] * B[k][j]
+            result[i][j] = s
+    
+    return result
+
+
+def swap_rows(matrix, row1, row2):
+    """Меняет местами две строки в матрице"""
+    matrix[row1], matrix[row2] = matrix[row2], matrix[row1]
+
+
+def swap_rows_partial(matrix, row1, row2, col_limit):
+    """Меняет строки местами только в первых col_limit столбцах"""
+    for j in range(col_limit):
+        matrix[row1][j], matrix[row2][j] = matrix[row2][j], matrix[row1][j]
+
+
+def round_matrix(matrix, decimals=8):
+    """Округляет все элементы матрицы"""
+    n = len(matrix)
+    return [[round(matrix[i][j], decimals) for j in range(n)] for i in range(n)]
+
+
+def print_matrix(name, matrix, precision=8):
+    """Выводит матрицу с округлением"""
+    print(f"\n{name}:")
+    rounded = round_matrix(matrix, precision)
+    for row in rounded:
+        print("  " + " ".join(f"{val:{precision+3}.{precision}f}" for val in row))
+
+
+def calculate_determinant(matrix):
+    """
+    Вычисляет определитель матрицы (рекурсивно, только для проверки миноров)
+    Используется только для небольших матриц!
+    """
+    n = len(matrix)
+    
+    # Базовые случаи
+    if n == 1:
+        return matrix[0][0]
+    if n == 2:
+        return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
+    
+    # Рекурсивное разложение по первой строке
+    det = 0.0
+    for j in range(n):
+        # Создаем минор (без первой строки и j-го столбца)
+        minor = [row[:j] + row[j+1:] for row in matrix[1:]]
+        sign = 1 if j % 2 == 0 else -1
+        det += sign * matrix[0][j] * calculate_determinant(minor)
+    
+    return det
+
+
+def check_principal_minors(A, tol=1e-12):
+    """
+    Проверяет все главные миноры матрицы A
+    
+    Возвращает:
+    - all_nonzero: True если все миноры ≠ 0
+    - minors: список значений миноров
+    - zero_minors: список порядков нулевых миноров
+    """
+    n = len(A)
+    minors = []
+    zero_minors = []
+    all_nonzero = True
+    
+    print("\n" + "=" * 60)
+    print("ПРОВЕРКА ГЛАВНЫХ МИНОРОВ")
+    print("=" * 60)
+    
+    for k in range(1, n + 1):
+        # Формируем главный минор порядка k
+        minor_matrix = [row[:k] for row in A[:k]]
+        
+        # Вычисляем определитель
+        det = calculate_determinant(minor_matrix)
+        minors.append(det)
+        
+        # Проверяем на ноль
+        if abs(det) < tol:
+            zero_minors.append(k)
+            all_nonzero = False
+            print(f"⚠️  Главный минор порядка {k}: {det:.2e} → РАВЕН НУЛЮ (в пределах точности)")
+        else:
+            print(f"✓ Главный минор порядка {k}: {det:.6f} ≠ 0")
+    
+    return all_nonzero, minors, zero_minors
+
+
+def lu_decomposition_with_minor_check(A, check_minors=True, tol=1e-12):
+    """
+    LU-разложение с выбором главного элемента.
+    Опционально проверяет главные миноры перед разложением.
+    """
+    n = len(A)
+    
+    # Проверка главных миноров (если нужно)
+    if check_minors:
+        all_nonzero, minors, zero_minors = check_principal_minors(A, tol)
+        
+        if not all_nonzero:
+            print("\n" + "!" * 60)
+            print(f"ВНИМАНИЕ: Найдены нулевые главные миноры порядков: {zero_minors}")
+            print("Матрица не может быть разложена без перестановок!")
+            print("Но с выбором главного элемента разложение возможно,")
+            print("если матрица в целом невырождена.")
+            print("!" * 60)
+            
+            # Спрашиваем, продолжать ли
+            response = input("\nПродолжить LU-разложение с перестановками? (y/n): ")
+            if response.lower() != 'y':
+                raise ValueError("LU-разложение отменено пользователем")
+    
+    # Стандартное LU-разложение с выбором главного элемента
+    L = identity_matrix(n)
+    U = copy_matrix(A)
+    P = identity_matrix(n)
+    
+    print("\n" + "=" * 60)
+    print("LU-РАЗЛОЖЕНИЕ С ВЫБОРОМ ГЛАВНОГО ЭЛЕМЕНТА")
+    print("=" * 60)
+    
+    for k in range(n - 1):
+        # Поиск главного элемента
+        max_idx = k
+        max_val = abs(U[k][k])
+        for i in range(k + 1, n):
+            if abs(U[i][k]) > max_val:
+                max_val = abs(U[i][k])
+                max_idx = i
+        
+        # Перестановка строк
+        if max_idx != k:
+            print(f"\nШаг {k+1}: перестановка строк {k+1} и {max_idx+1}")
+            swap_rows(U, k, max_idx)
+            swap_rows(P, k, max_idx)
+            if k > 0:
+                swap_rows_partial(L, k, max_idx, k)
+        
+        # Проверка на вырожденность
+        if abs(U[k][k]) < 1e-15:
+            raise ValueError("Матрица вырождена (диагональный элемент близок к нулю)")
+        
+        # Прямой ход
+        for i in range(k + 1, n):
+            factor = U[i][k] / U[k][k]
+            L[i][k] = factor
+            for j in range(k, n):
+                U[i][j] -= factor * U[k][j]
+    
+    return L, U, P
+
+
+def forward_substitution(L, b):
+    """Решение системы L·y = b (L - нижняя треугольная)"""
+    n = len(L)
+    y = [0.0] * n
+    
+    for i in range(n):
+        total = 0.0
+        for j in range(i):
+            total += L[i][j] * y[j]
+        y[i] = (b[i] - total) / L[i][i]
+    
+    return y
+
+
+def backward_substitution(U, y):
+    """Решение системы U·x = y (U - верхняя треугольная)"""
+    n = len(U)
+    x = [0.0] * n
+    
+    for i in range(n - 1, -1, -1):
+        total = 0.0
+        for j in range(i + 1, n):
+            total += U[i][j] * x[j]
+        x[i] = (y[i] - total) / U[i][i]
+    
+    return x
+
+
+def apply_permutation(P, v):
+    """Умножение матрицы перестановок P на вектор v"""
+    n = len(P)
+    result = [0.0] * n
+    
+    for i in range(n):
+        for j in range(n):
+            result[i] += P[i][j] * v[j]
+    
+    return result
+
+
+def inverse_matrix(A, check_minors=True):
+    """
+    Вычисляет обратную матрицу через LU-разложение
+    с опциональной проверкой главных миноров
+    """
+    n = len(A)
+    
+    # LU-разложение с проверкой миноров
+    L, U, P = lu_decomposition_with_minor_check(A, check_minors)
+    
+    # Вывод результатов разложения
+    print_matrix("Матрица L (нижняя треугольная)", L)
+    print_matrix("Матрица U (верхняя треугольная)", U)
+    print_matrix("Матрица перестановок P", P)
+    
+    # Проверка P·L·U = A
+    print("\n" + "-" * 40)
+    print("ПРОВЕРКА: P·L·U = A")
+    print("-" * 40)
+    
+    PL = matrix_multiply(P, L)
+    PLU = matrix_multiply(PL, U)
+    print_matrix("Результат P·L·U", PLU, precision=10)
+    
+    # Сравнение
+    is_equal = True
+    for i in range(n):
+        for j in range(n):
+            if abs(PLU[i][j] - A[i][j]) > 1e-8:
+                is_equal = False
+                break
+    
+    if is_equal:
+        print("\n✓ P·L·U равна исходной матрице A")
+    else:
+        print("\n⚠️  Есть небольшие расхождения (в пределах машинной точности)")
+    
+    # Вычисление обратной матрицы
+    I = identity_matrix(n)
+    A_inv = create_matrix(n)
+    
+    for j in range(n):
+        e = [I[i][j] for i in range(n)]
+        b = apply_permutation(P, e)
+        y = forward_substitution(L, b)
+        x = backward_substitution(U, y)
+        
+        for i in range(n):
+            A_inv[i][j] = x[i]
+    
+    return A_inv
+
+
+def matrix_norm(A):
+    """Вычисляет норму Фробениуса матрицы"""
+    n = len(A)
+    s = 0.0
+    for i in range(n):
+        for j in range(n):
+            s += A[i][j] * A[i][j]
+    return s ** 0.5
+
+
+# ================ ОСНОВНАЯ ПРОГРАММА ================
+
+print("=" * 70)
+print("ОБРАЩЕНИЕ МАТРИЦЫ С ПРОВЕРКОЙ ГЛАВНЫХ МИНОРОВ")
+print("=" * 70)
+
+# Ввод размерности
+while True:
+    try:
+        n = int(input("\nВведите размерность матрицы (n x n): "))
+        if n > 0:
+            break
+        print("Размерность должна быть положительным числом")
+    except ValueError:
+        print("Введите целое число")
+
+# Ввод элементов матрицы
+print(f"\nВведите элементы матрицы {n}x{n} (по строкам, числа через пробел):")
+A = []
+
+for i in range(n):
+    while True:
+        try:
+            row_str = input(f"Строка {i+1}: ").strip()
+            row = list(map(float, row_str.split()))
+            
+            if len(row) != n:
+                print(f"Ошибка! В строке должно быть {n} чисел")
+                continue
+            
+            A.append(row)
+            break
+        except ValueError:
+            print("Ошибка! Введите числа, используйте точку для дробных")
+
+# Спрашиваем, проверять ли главные миноры
+print("\nПроверять главные миноры перед LU-разложением?")
+print("1 - Да (рекомендуется для анализа)")
+print("2 - Нет (только стандартное LU-разложение)")
+choice = input("Ваш выбор (1/2): ")
+
+check_minors = (choice == '1')
+
+# Вычисление обратной матрицы
+try:
+    A_inv = inverse_matrix(A, check_minors=check_minors)
+    
+    # Вывод результатов
+    print("\n" + "=" * 60)
+    print("ОБРАТНАЯ МАТРИЦА")
+    print("=" * 60)
+    
+    print_matrix("Обратная матрица A⁻¹", A_inv, precision=8)
+    
+    # Проверка A·A⁻¹ = I
+    print("\n" + "-" * 40)
+    print("ПРОВЕРКА: A·A⁻¹ = I")
+    print("-" * 40)
+    
+    product = matrix_multiply(A, A_inv)
+    print_matrix("Результат A·A⁻¹", product, precision=10)
+    
+    # Оценка ошибки
+    I = identity_matrix(n)
+    error_norm = 0.0
+    for i in range(n):
+        for j in range(n):
+            expected = 1.0 if i == j else 0.0
+            diff = product[i][j] - expected
+            error_norm += diff * diff
+    error_norm = error_norm ** 0.5
+    
+    print(f"\nНорма ошибки ||A·A⁻¹ - I||: {error_norm:.2e}")
+    
+    if error_norm < 1e-10:
+        print("✓ Отличная точность")
+    elif error_norm < 1e-8:
+        print("✓ Хорошая точность")
+    elif error_norm < 1e-5:
+        print("⚠️ Приемлемая точность")
+    else:
+        print("❌ Низкая точность (возможно, матрица плохо обусловлена)")
+    
+except Exception as e:
+    print(f"\n❌ Ошибка: {e}")
+    print("Матрица, вероятно, вырождена или плохо обусловлена")
+
+print("\n" + "=" * 70)
+print("РАБОТА ПРОГРАММЫ ЗАВЕРШЕНА")
+print("=" * 70)
