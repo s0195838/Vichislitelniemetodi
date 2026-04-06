@@ -1,0 +1,469 @@
+"""
+Интерполяционная схема Эйткена
+С поддержкой ручного ввода данных пользователем
+"""
+
+def aitken(x_nodes, y_nodes, x):
+    """
+    Интерполяция по схеме Эйткена.
+    
+    Параметры:
+        x_nodes : list[float] - узлы интерполяции
+        y_nodes : list[float] - значения функции в узлах
+        x : float - точка, в которой нужно найти значение
+    
+    Возвращает:
+        float - интерполированное значение y(x)
+    """
+    n = len(x_nodes)
+    col = list(y_nodes)
+    
+    for k in range(1, n):
+        new_col = []
+        for i in range(n - k):
+            numerator = (x_nodes[i] - x) * col[i+1] - (x_nodes[i+k] - x) * col[i]
+            denominator = x_nodes[i] - x_nodes[i+k]
+            new_col.append(numerator / denominator)
+        col = new_col
+    
+    return col[0]
+
+
+def aitken_with_sorting(x_nodes, y_nodes, x):
+    """Схема Эйткена с сортировкой узлов по близости к x."""
+    points = sorted(zip(x_nodes, y_nodes), key=lambda p: abs(p[0] - x))
+    x_sorted, y_sorted = zip(*points)
+    return aitken(list(x_sorted), list(y_sorted), x)
+
+
+def print_table(x_nodes, y_nodes, title="Исходные данные"):
+    """Вывод таблицы в красивом формате."""
+    print(f"\n{title}")
+    print("─" * 50)
+    print(f"{'№':^4} {'x':^12} {'y':^12}")
+    print("─" * 50)
+    for i, (x, y) in enumerate(zip(x_nodes, y_nodes)):
+        print(f"{i:^4} {x:^12.6f} {y:^12.6f}")
+    print("─" * 50)
+
+
+def interactive_input():
+    """
+    Интерактивный ввод данных пользователем.
+    """
+    print("\n" + "="*60)
+    print(" РЕЖИМ РУЧНОГО ВВОДА ДАННЫХ")
+    print("="*60)
+    
+    # Ввод количества узлов
+    while True:
+        try:
+            n = int(input("\nВведите количество узлов интерполяции: "))
+            if n >= 2:
+                break
+            print("Ошибка: нужно хотя бы 2 узла. Повторите ввод.")
+        except ValueError:
+            print("Ошибка: введите целое число.")
+    
+    x_nodes = []
+    y_nodes = []
+    
+    print("\nВведите узлы (x, y):")
+    print("Формат: x y (через пробел)")
+    print("-" * 40)
+    
+    for i in range(n):
+        while True:
+            try:
+                text = input(f"Узел {i+1}: ").strip().split()
+                if len(text) != 2:
+                    print("Ошибка: нужно ввести два числа (x и y).")
+                    continue
+                
+                x = float(text[0])
+                y = float(text[1])
+                
+                # Проверка на дублирование x
+                if x in x_nodes:
+                    print(f"Предупреждение: узел x={x} уже существует.")
+                    overwrite = input("Заменить? (y/n): ").lower()
+                    if overwrite == 'y':
+                        idx = x_nodes.index(x)
+                        x_nodes[idx] = x
+                        y_nodes[idx] = y
+                        print(f"Узел {i+1} обновлён: ({x}, {y})")
+                    else:
+                        continue
+                else:
+                    x_nodes.append(x)
+                    y_nodes.append(y)
+                break
+            except ValueError:
+                print("Ошибка: введите числа в формате: x y")
+    
+    return x_nodes, y_nodes
+
+
+def input_from_file():
+    """
+    Ввод данных из файла.
+    Формат файла: каждая строка содержит x и y через пробел.
+    """
+    print("\n" + "="*60)
+    print(" ЗАГРУЗКА ИЗ ФАЙЛА")
+    print("="*60)
+    
+    filename = input("\nВведите имя файла: ").strip()
+    
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        x_nodes = []
+        y_nodes = []
+        
+        for line_num, line in enumerate(lines, 1):
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            
+            parts = line.split()
+            if len(parts) >= 2:
+                try:
+                    x = float(parts[0])
+                    y = float(parts[1])
+                    x_nodes.append(x)
+                    y_nodes.append(y)
+                except ValueError:
+                    print(f"Предупреждение: строка {line_num} пропущена (не числа)")
+        
+        if len(x_nodes) < 2:
+            print("Ошибка: в файле недостаточно данных (нужно минимум 2 узла)")
+            return None, None
+        
+        print(f"Загружено {len(x_nodes)} узлов")
+        return x_nodes, y_nodes
+        
+    except FileNotFoundError:
+        print(f"Ошибка: файл '{filename}' не найден")
+        return None, None
+    except Exception as e:
+        print(f"Ошибка при чтении файла: {e}")
+        return None, None
+
+
+def interactive_interpolation():
+    """
+    Основная интерактивная функция.
+    """
+    print("\n" + "█"*60)
+    print("█" + " " * 58 + "█")
+    print("█     ИНТЕРПОЛЯЦИОННАЯ СХЕМА ЭЙТКЕНА     █")
+    print("█" + " " * 58 + "█")
+    print("█"*60)
+    
+    # Выбор способа ввода данных
+    print("\nВыберите способ ввода данных:")
+    print("  1. Ручной ввод с клавиатуры")
+    print("  2. Загрузка из файла")
+    print("  3. Использовать примеры")
+    
+    while True:
+        choice = input("\nВаш выбор (1/2/3): ").strip()
+        if choice == '1':
+            x_nodes, y_nodes = interactive_input()
+            if x_nodes:
+                break
+        elif choice == '2':
+            x_nodes, y_nodes = input_from_file()
+            if x_nodes:
+                break
+        elif choice == '3':
+            show_examples()
+            return
+        else:
+            print("Ошибка: введите 1, 2 или 3")
+    
+    if not x_nodes:
+        print("Ошибка: данные не загружены")
+        return
+    
+    # Вывод таблицы
+    print_table(x_nodes, y_nodes, "Введённые данные")
+    
+    # Ввод точки интерполяции
+    while True:
+        try:
+            x_target = float(input("\nВведите точку x для интерполяции: "))
+            break
+        except ValueError:
+            print("Ошибка: введите число")
+    
+    # Вычисление
+    result_regular = aitken(x_nodes, y_nodes, x_target)
+    result_sorted = aitken_with_sorting(x_nodes, y_nodes, x_target)
+    
+    # Вывод результатов
+    print("\n" + "="*60)
+    print(" РЕЗУЛЬТАТЫ")
+    print("="*60)
+    print(f"\nИнтерполяция в точке x = {x_target}")
+    print(f"  Без сортировки: y = {result_regular:.8f}")
+    print(f"  С сортировкой:   y = {result_sorted:.8f}")
+    
+    # Проверка в узлах (демонстрация точности)
+    print("\nПроверка в узлах интерполяции:")
+    for xi, yi in zip(x_nodes, y_nodes):
+        val = aitken(x_nodes, y_nodes, xi)
+        status = "✓" if abs(val - yi) < 1e-10 else "✗"
+        print(f"  x = {xi:.6f}: вычислено {val:.8f} (должно {yi:.8f}) {status}")
+    
+    # Дополнительные опции
+    print("\n" + "-"*40)
+    more = input("Показать пошаговую таблицу Эйткена? (y/n): ").lower()
+    if more == 'y':
+        show_aitken_table(x_nodes, y_nodes, x_target)
+    
+    # Интерполяция в нескольких точках
+    more = input("\nИнтерполировать в нескольких точках? (y/n): ").lower()
+    if more == 'y':
+        try:
+            points = input("Введите x через пробел: ").split()
+            x_points = [float(p) for p in points]
+            print("\nРезультаты:")
+            print("─" * 50)
+            print(f"{'x':^12} {'y(x)':^16}")
+            print("─" * 50)
+            for xp in x_points:
+                yp = aitken_with_sorting(x_nodes, y_nodes, xp)
+                print(f"{xp:^12.6f} {yp:^16.8f}")
+            print("─" * 50)
+        except ValueError:
+            print("Ошибка: некорректный ввод")
+
+
+def show_aitken_table(x_nodes, y_nodes, x):
+    """Показать заполнение таблицы Эйткена."""
+    n = len(x_nodes)
+    # Сортируем узлы по близости
+    points = sorted(zip(x_nodes, y_nodes), key=lambda p: abs(p[0] - x))
+    x_sorted, y_sorted = zip(*points)
+    x_sorted = list(x_sorted)
+    y_sorted = list(y_sorted)
+    
+    # Создаём таблицу
+    table = [[None] * n for _ in range(n)]
+    for i in range(n):
+        table[i][0] = y_sorted[i]
+    
+    print(f"\nТаблица Эйткена для x = {x}")
+    print("="*70)
+    
+    # Заголовок
+    header = f"{'i':^4} {'x_i':^8} {'y_i':^8}"
+    for k in range(1, min(n, 7)):
+        if k == 1:
+            header += f" {'P_{i,i+1}':^12}"
+        elif k == 2:
+            header += f" {'P_{i,i+2}':^12}"
+        else:
+            header += f" {'P_{i,i+' + str(k) + '}':^12}"
+    print(header)
+    print("-"*70)
+    
+    # Заполняем и выводим
+    for k in range(1, n):
+        for i in range(n - k):
+            num = (x_sorted[i] - x) * table[i+1][k-1] - (x_sorted[i+k] - x) * table[i][k-1]
+            den = x_sorted[i] - x_sorted[i+k]
+            table[i][k] = num / den
+    
+    # Вывод строк
+    for i in range(n):
+        row = f"{i:^4} {x_sorted[i]:^8.4f} {table[i][0]:^8.4f}"
+        for k in range(1, n - i):
+            row += f" {table[i][k]:^12.6f}"
+        print(row)
+    
+    print("="*70)
+    print(f"Результат: y({x}) = {table[0][n-1]:.8f}")
+
+
+def show_examples():
+    """Показать встроенные примеры."""
+    print("\n" + "="*60)
+    print(" ВСТРОЕННЫЕ ПРИМЕРЫ")
+    print("="*60)
+    
+    print("\nВыберите пример:")
+    print("  1. Пример из учебника Бахвалова/Черных")
+    print("  2. Пример из методички Слюсаренко (x=0.1 и x=0.5)")
+    print("  3. Функция sin(x) на [0, π]")
+    print("  4. Функция x² на [0, 4]")
+    print("  5. Вернуться в главное меню")
+    
+    choice = input("\nВаш выбор (1-5): ").strip()
+    
+    if choice == '1':
+        x_nodes = [1.0, 1.1, 1.3, 1.5, 1.6]
+        y_nodes = [1.000, 1.032, 1.091, 1.145, 1.170]
+        print_table(x_nodes, y_nodes, "Пример Бахвалова/Черных")
+        
+        x_target = 1.15
+        result = aitken_with_sorting(x_nodes, y_nodes, x_target)
+        print(f"\nИнтерполяция в x = {x_target}: y = {result:.6f}")
+        print("Ожидаемый результат: 1.048")
+        
+        show_aitken_table(x_nodes, y_nodes, x_target)
+        
+    elif choice == '2':
+        x_nodes = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4]
+        y_nodes = [0.00, 0.45, 0.63, 0.77, 0.89, 1.00, 1.10, 1.18]
+        print_table(x_nodes, y_nodes, "Пример Слюсаренко")
+        
+        for x_target in [0.1, 0.5]:
+            result = aitken_with_sorting(x_nodes, y_nodes, x_target)
+            print(f"\nИнтерполяция в x = {x_target}: y = {result:.4f}")
+            if x_target == 0.1:
+                print("Ожидаемый результат: ≈0.29")
+            else:
+                print("Ожидаемый результат: 0.70")
+        
+        show_aitken_table(x_nodes, y_nodes, 0.5)
+        
+    elif choice == '3':
+        import math
+        x_nodes = [0, math.pi/4, math.pi/2, 3*math.pi/4, math.pi]
+        y_nodes = [math.sin(x) for x in x_nodes]
+        print_table(x_nodes, y_nodes, "sin(x) на [0, π]")
+        
+        x_target = math.pi/3
+        result = aitken_with_sorting(x_nodes, y_nodes, x_target)
+        print(f"\nsin({x_target:.4f}) = {result:.8f}")
+        print(f"Точное значение: {math.sin(x_target):.8f}")
+        print(f"Ошибка: {abs(result - math.sin(x_target)):.2e}")
+        
+    elif choice == '4':
+        x_nodes = [0, 1, 2, 3, 4]
+        y_nodes = [0, 1, 4, 9, 16]
+        print_table(x_nodes, y_nodes, "y = x²")
+        
+        x_target = 2.5
+        result = aitken_with_sorting(x_nodes, y_nodes, x_target)
+        print(f"\nx² при x = {x_target}: {result:.8f}")
+        print(f"Точное значение: {x_target**2:.8f}")
+        
+    elif choice == '5':
+        interactive_interpolation()
+        return
+    else:
+        print("Неверный выбор")
+    
+    # После примера предложить вернуться
+    back = input("\nВернуться в главное меню? (y/n): ").lower()
+    if back == 'y':
+        interactive_interpolation()
+
+
+def batch_interpolation():
+    """
+    Пакетная интерполяция для множества точек.
+    """
+    print("\n" + "="*60)
+    print(" ПАКЕТНАЯ ИНТЕРПОЛЯЦИЯ")
+    print("="*60)
+    
+    # Ввод данных
+    x_nodes, y_nodes = interactive_input()
+    if not x_nodes:
+        return
+    
+    print_table(x_nodes, y_nodes, "Исходные данные")
+    
+    # Ввод диапазона
+    print("\nВведите диапазон для интерполяции:")
+    try:
+        x_min = float(input("x_min: "))
+        x_max = float(input("x_max: "))
+        n_points = int(input("Количество точек: "))
+    except ValueError:
+        print("Ошибка ввода")
+        return
+    
+    if n_points < 2:
+        n_points = 10
+    
+    step = (x_max - x_min) / (n_points - 1)
+    
+    print("\n" + "="*60)
+    print(" РЕЗУЛЬТАТЫ ПАКЕТНОЙ ИНТЕРПОЛЯЦИИ")
+    print("="*60)
+    print(f"{'x':^12} {'y(x)':^16}")
+    print("-"*30)
+    
+    results = []
+    for i in range(n_points):
+        x = x_min + i * step
+        y = aitken_with_sorting(x_nodes, y_nodes, x)
+        results.append((x, y))
+        print(f"{x:^12.6f} {y:^16.8f}")
+    
+    # Сохранение в файл
+    save = input("\nСохранить результаты в файл? (y/n): ").lower()
+    if save == 'y':
+        filename = input("Имя файла: ").strip()
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write("# Результаты интерполяции по схеме Эйткена\n")
+                f.write("# x\ty\n")
+                for x, y in results:
+                    f.write(f"{x}\t{y}\n")
+            print(f"Результаты сохранены в {filename}")
+        except Exception as e:
+            print(f"Ошибка сохранения: {e}")
+
+
+# ========== ОСНОВНАЯ ПРОГРАММА ==========
+
+if __name__ == "__main__":
+    print("\n" + "█"*60)
+    print("█" + " " * 58 + "█")
+    print("█     ИНТЕРПОЛЯЦИОННАЯ СХЕМА ЭЙТКЕНА     █")
+    print("█" + " " * 58 + "█")
+    print("█"*60)
+    
+    while True:
+        print("\n" + "="*60)
+        print(" ГЛАВНОЕ МЕНЮ")
+        print("="*60)
+        print("  1. Ручной ввод данных (интерактивно)")
+        print("  2. Загрузка из файла")
+        print("  3. Показать встроенные примеры")
+        print("  4. Пакетная интерполяция (диапазон точек)")
+        print("  5. Выход")
+        
+        choice = input("\nВаш выбор (1-5): ").strip()
+        
+        if choice == '1':
+            interactive_interpolation()
+        elif choice == '2':
+            x_nodes, y_nodes = input_from_file()
+            if x_nodes:
+                print_table(x_nodes, y_nodes, "Загруженные данные")
+                x_target = input("\nВведите x для интерполяции (Enter для пропуска): ").strip()
+                if x_target:
+                    try:
+                        x = float(x_target)
+                        result = aitken_with_sorting(x_nodes, y_nodes, x)
+                        print(f"\ny({x}) = {result:.8f}")
+                    except ValueError:
+                        print("Ошибка: не число")
+        elif choice == '3':
+            show_examples()
+        elif choice == '4':
+            batch_interpolation()
+        elif choice == '5':
+            print("\nДо свидания!")
+            break
+        else:
+            print("Ошибка: введите число от 1 до 5")
