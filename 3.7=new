@@ -1,0 +1,728 @@
+import math
+import re
+import time
+
+
+class SteffensenSolver:
+    """
+    Интерактивный решатель уравнений.
+    Метод Стеффенсена = МПИ + λ²-процесс Эйткена.
+    """
+    
+    def __init__(self):
+        self.safe_dict = {
+            'sin': math.sin, 'cos': math.cos, 'tan': math.tan,
+            'asin': math.asin, 'acos': math.acos, 'atan': math.atan,
+            'sinh': math.sinh, 'cosh': math.cosh, 'tanh': math.tanh,
+            'exp': math.exp, 'log': math.log, 'log10': math.log10,
+            'log2': math.log2, 'sqrt': math.sqrt, 'abs': abs,
+            'pi': math.pi, 'e': math.e, 'ceil': math.ceil, 'floor': math.floor
+        }
+    
+    def create_g(self, equation_str):
+        """Парсит строку и создаёт функцию g(x) для МПИ x = g(x)."""
+        equation_str = equation_str.strip()
+        
+        if '=' in equation_str:
+            parts = equation_str.split('=') #проверяет, есть ли в строке знак =. Если да, разбивает строку на части.(!)
+            
+            if len(parts) == 2:
+                left = parts[0].strip()
+                right = parts[1].strip()#если частей ровно две (слева и справа от =), убираем пробелы с каждой.
+                
+                
+                if left == 'x':
+                    expr = right
+                elif right == 'x': #Определяет, где располагается 'x'
+                    expr = left
+                else:
+                    print("[ВНИМАНИЕ] Уравнение не в форме 'x = g(x)'. Использую правую часть как g(x).")
+                    expr = right
+                    
+                    
+            else:
+                expr = parts[-1].strip()#если знаков = больше одного (например, "x = y = z"), берём последнюю часть.
+        else:
+            expr = equation_str#если знака = нет (пользователь ввёл просто "cos(x)"), используем всю строку как выражение.
+        
+        expr = expr.replace('^', '**')
+        
+        code = compile(expr, '<input>', 'eval')# превращает строку в готовый к выполнению байт-код.
+        
+        
+        safe_dict = self.safe_dict #сохраняем ссылку на словарь с функциями, чтобы она была доступна внутри g(x).
+        
+        def g(x):
+            try:
+                safe_dict['x'] = x# кладём текущее значение x в словарь
+                result = eval(code, {"__builtins__": {}}, safe_dict)
+                
+                if not isinstance(result, (int, float)):#Проверка на то, что result это число 
+                    raise ValueError(f"Функция вернула не число, а {type(result)}")
+                    
+                if math.isnan(result) or math.isinf(result):#проверяет, не является ли результат NaN (Not a Number) или бесконечностью.
+                    raise ValueError(f"Функция вернула {result}")
+                return result
+            except Exception as e:
+                raise ValueError(f"Ошибка при вычислении g({x:.6f}): {e}")
+                
+        
+        #Пробует вызвать g(x) на 4 разных точках.
+        #Если хотя бы одна точка сработала — всё хорошо.
+        test_points = [0.0, 0.5, 1.0, -0.5]
+        test_ok = False
+        last_error = None
+        
+        for tp in test_points:
+            try:
+                val = g(tp)
+                test_ok = True
+            except Exception as e:
+                last_error = e
+        
+        if not test_ok:
+            raise ValueError(f"Функция не работает ни на одном тестовом значении. Пример ошибки: {last_error}")
+        
+        #возвращает кортеж из двух элементов:
+        #g — готовая к использованию функция.
+        #expr — строка выражения (для вывода на экран).
+        
+        return g, expr
+    
+    
+    
+    
+    #g — функция правой части x = g(x)
+    #x0 — начальное приближение
+    #eps — требуемая точность (по умолчанию 0.0000000001)
+    #max_iter — максимальное число итераций (защита от бесконечного цикла)
+    #verbose — печатать ли таблицу (True) или работать молча (False для compare)
+    def solve_steffensen(self, g, x0, eps=1e-10, max_iter=100, verbose=True):
+        """
+        Метод Стеффенсена (МПИ + дельта^2-процесс Эйткена).
+        
+        Возвращает:
+            (корень, история_итераций) или (None, история) если не сошлось
+        """
+        history = [(0, x0, None, None, None, x0)]
+        
+        if verbose:
+            print(f"\n{'МЕТОД СТЕФФЕНСЕНА (МПИ + λ²-ПРОЦЕСС ЭЙТКЕНА)':-^95}")
+            
+            #печатает заголовки столбцов таблицы.:<16 — выравнивание влево на 16 символах.
+            print(f"{'k':<5} {'x0':<16} {'x1=g(x0)':<16} {'x2=g(x1)':<16} {'λ~':<12} {'x_new (Эйткен)':<18} {'|x_new-x0|':<12}")
+            print("-" * 95)
+        
+        #цикл от 1 до max_iter включительно. i — номер текущей итерации.
+        for i in range(1, max_iter + 1):
+            try:
+                #мы смотрим, как ведёт себя функция в окрестности x0
+                x1 = g(x0)
+                x2 = g(x1)
+                # чтобы оценить коэффициент затухания λ нужно три точки(x0,x1,x2)
+            except ValueError as e:
+                if verbose:
+                    print(f"\n❌ ОШИБКА на итерации {i}: {e}")
+                    print(f"   x0 = {x0:.10f} — функция вышла за область определения.")
+                    print(f"   Попробуйте другое начальное приближение.")
+                return None, history
+            
+            denominator = x2 - 2.0 * x1 + x0#В тетради: вторая конечная разность Δ²x₀ = x₂ - 2x₁ + x₀
+            
+            #Просмотр на если знаменатель почти ноль
+            if abs(denominator) < 1e-15:
+                x_new = x2
+                lambda_est = None
+                
+            #Вычисление λ и прыжок Эйткена
+            else:
+                lambda_est = (x2 - x1) / (x1 - x0) if abs(x1 - x0) > 1e-15 else None
+                #Мы предполагаем, что ошибка убывает как геометрическая прогрессия со знаменателем λ.
+                #По трём точкам находим λ.
+                #Вычисляем предел этой прогрессии (корень) — и прыгаем прямо туда.
+                x_new = x0 - ((x1 - x0) ** 2) / denominator
+            
+            
+            #Вычисление невязки и запись в историю
+            error = abs(x_new - x0)
+            history.append((i, x0, x1, x2, lambda_est, x_new))
+            
+            #Печать строки таблицы
+            if verbose:
+                lam_str = f"{lambda_est:.6f}" if lambda_est is not None else "---"
+                print(f"{i:<5} {x0:<16.10f} {x1:<16.10f} {x2:<16.10f} {lam_str:<12} {x_new:<18.12f} {error:<12.2e}")
+            
+            #Проверка сходимости
+            #если невязка меньше требуемой точности, печатаем итоговое резюме и возвращаем корень.
+            if error < eps:
+                if verbose:
+                    self._print_steffensen_summary(i, x_new, error)
+                return x_new, history
+            
+            x0 = x_new
+        
+        #Eсли цикл закончился, а точность не достигнута, возвращаем последнее приближение
+        if verbose:
+            print(f"\n⚠️  Достигнут лимит в {max_iter} итераций.")
+            print(f"Последнее приближение: x = {x0:.14f}")
+            print(f"Невязка: {error:.2e}")
+        return x0, history
+    
+    
+    #обычный метод простых итераций
+    def solve_mpi(self, g, x0, eps=1e-10, max_iter=100, verbose=True):
+        """Обычный МПИ x_{n+1} = g(x_n) для сравнения."""
+        history = [(0, x0, abs(x0 - x0))]
+        
+        if verbose:
+            print(f"\n{'ОБЫЧНЫЙ МПИ':-^65}")
+            print(f"{'Итер.':<8} {'x_n':<18} {'Невязка':<18}")
+            print("-" * 45)
+        
+        x_prev = x0
+        for i in range(1, max_iter + 1):
+            try:
+                x_new = g(x_prev)
+            except ValueError as e:
+                if verbose:
+                    print(f"\n❌ ОШИБКА на итерации {i}: {e}")
+                    print(f"   x_{i-1} = {x_prev:.10f} — функция вышла за область определения.")
+                return None, history
+            
+            err = abs(x_new - x_prev)
+            history.append((i, x_new, err))
+            
+            
+            #проверка сходимости, обновление точки.
+            if verbose:
+                print(f"{i:<8} {x_new:<18.12f} {err:<18.2e}")
+            if err < eps:
+                if verbose:
+                    print(f"\n✅ Обычный МПИ сошелся за {i} итераций.")
+                    print(f"Корень: x = {x_new:.14f}")
+                return x_new, history
+            
+            x_prev = x_new
+            
+        #Обработка случая, когда метод не сошёлся за отведённое число итераций.
+        if verbose:
+            print(f"\n⚠️  Обычный МПИ: достигнут лимит в {max_iter} итераций.")
+        return x_prev, history
+    
+    def _print_steffensen_summary(self, iterations, root, error):
+        """Итоговое резюме метода Стеффенсена."""
+        print(f"\n{'='*70}")
+        print(f"✅ МЕТОД СТЕФФЕНСЕНА СОШЕЛСЯ")
+        print(f"{'='*70}")
+        print(f"  Итераций:              {iterations}")
+        print(f"  Вызовов функции f(x):  {iterations * 2}")
+        print(f"  Найденный корень:      {root:.14f}")
+        print(f"  Итоговая невязка:      {error:.2e}")
+        print(f"{'='*70}")
+    
+    
+    #сравнение двух методов для одного начального приближения
+    def compare_single(self, g, x0, eps=1e-10, max_iter=100):
+        """Сравнение МПИ и метода Стеффенсена для одной начальной точки."""
+        print("\n" + "="*70)
+        print("СРАВНЕНИЕ: Обычный МПИ vs МПИ + λ²-процесс Эйткена")
+        print("="*70)
+        print(f"  Начальное приближение: x0 = {x0}")
+        print()
+        
+        #time.time() — текущее время в секундах.
+        #Запускает метод Стеффенсена с таблицей (verbose=True).
+        #time_steff — чистое время выполнения в секундах.
+        print("🔵 МЕТОД СТЕФФЕНСЕНА:")
+        start = time.time()
+        root_steff, hist_steff = self.solve_steffensen(g, x0, eps, max_iter, verbose=True)
+        time_steff = time.time() - start
+        
+        #То же самое для обычного МПИ
+        print("\n🔵 ОБЫЧНЫЙ МПИ:")
+        start = time.time()
+        root_mpi, hist_mpi = self.solve_mpi(g, x0, eps, max_iter, verbose=True)
+        time_mpi = time.time() - start
+        
+        #Таблица сравнения
+        print("\n" + "="*70)
+        print("  ИТОГОВОЕ СРАВНЕНИЕ")
+        print("="*70)
+        
+        if root_steff is not None and root_mpi is not None:
+            print(f"\n{'Метод':<35} {'Итераций':<12} {'Вызовов f(x)':<15} {'Время (сек)':<15}")
+            print("-" * 77)
+            print(f"{'Обычный МПИ':<35} {len(hist_mpi)-1:<12} {len(hist_mpi)-1:<15} {time_mpi:<15.6f}")
+            print(f"{'Стеффенсен (МПИ + Эйткен)':<35} {len(hist_steff)-1:<12} {(len(hist_steff)-1)*2:<15} {time_steff:<15.6f}")
+            #(len(hist_steff)-1)*2 — количество вызовов функции (каждая итерация Стеффенсена требует 2 вызова g(x)).
+            
+            if len(hist_mpi) > 1 and len(hist_steff) > 1:
+                speedup_iter = (len(hist_mpi) - 1) / (len(hist_steff) - 1)#len(hist_mpi)-1 — количество итераций (вычитаем 1, потому что нулевой элемент — это начальная точка, не итерация).
+                speedup_time = time_mpi / time_steff if time_steff > 0 else float('inf')
+                print(f"\n📊 УСКОРЕНИЕ:")
+                print(f"  По итерациям: в {speedup_iter:.1f} раз(а)")
+                print(f"  По времени:   в {speedup_time:.1f} раз(а)")
+            
+            print(f"\n{'='*70}")
+            print(f"РЕЗУЛЬТАТ:")
+            print(f"  Корень (Стеффенсен):  {root_steff:.14f}")
+            print(f"  Корень (МПИ):         {root_mpi:.14f}")
+            print(f"  Разница:              {abs(root_steff - root_mpi):.2e}")
+            print(f"{'='*70}")
+        
+        print(f"\n💡 ПОЯСНЕНИЕ:")
+        print(f"  МПИ сходится линейно:")
+        print(f"    |x_(n+1) - x*| ≈ λ · |x_n - x*|")
+        print(f"  Процесс Эйткена оценивает λ по трём точкам и исключает её,")
+        print(f"  превращая линейную сходимость в квадратичную.")
+        print()
+    
+    
+    # ============================================================
+    # НОВЫЙ МЕТОД: поиск всех корней на отрезке [a, b]
+    # ============================================================
+    def find_all_roots(self, g, a, b, method='steffensen', eps=1e-10, max_iter=100, num_initial=50):
+        """
+        Поиск всех корней уравнения x = g(x) на отрезке [a, b].
+
+        Идея:
+          - Разбиваем отрезок [a, b] на num_initial равных частей.
+          - Из каждой точки разбиения запускаем выбранный метод.
+          - Собираем все найденные корни.
+          - Убираем дубликаты (корни, отличающиеся менее чем на погрешность).
+
+        Параметры:
+          g            : функция правой части x = g(x)
+          a, b         : границы отрезка
+          method       : 'steffensen' или 'mpi' — каким методом искать
+          eps          : точность для метода
+          max_iter     : максимальное число итераций
+          num_initial  : на сколько частей разбить отрезок для сканирования
+
+        Возвращает:
+          список уникальных корней (отсортированный)
+        """
+        method_name = "Стеффенсена" if method == 'steffensen' else "МПИ"
+        
+        print("\n" + "="*70)
+        print(f"  ПОИСК ВСЕХ КОРНЕЙ НА ОТРЕЗКЕ [{a}, {b}]")
+        print(f"  Метод: {method_name}")
+        print("="*70)
+        print(f"  Отрезок:          [{a}, {b}]")
+        print(f"  Точек разбиения:  {num_initial}")
+        print(f"  Точность (eps):   {eps}")
+        print()
+
+        # Генерируем точки разбиения (включая концы отрезка)
+        # h — шаг разбиения (расстояние между соседними точками)
+        h = (b - a) / num_initial
+        start_points = [a + i * h for i in range(num_initial + 1)]
+
+        raw_roots = []   # сюда будем складывать все найденные корни
+        failed = 0       # счётчик неудачных запусков
+
+        # Выбираем функцию-решатель в зависимости от method
+        if method == 'steffensen':
+            solver_func = self.solve_steffensen
+        else:
+            solver_func = self.solve_mpi
+
+        print("Сканирование отрезка...")
+        print(f"{'Старт x0':<16} {'Результат':<18} {'Статус'}")
+        print("-" * 50)
+        
+        
+        #Запускается выбранный метод (solve_steffensen или solve_mpi) с verbose=False — без таблицы, иначе вывод был бы слишком большим.
+        #Метод возвращает кортеж (корень, история). Нам нужен только корень — root.
+        #Если метод выбросил ошибку (например, log(-5)), root становится None.
+        for x0 in start_points:
+            try:
+                #verbose=False — метод работает молча, без вывода таблиц итераций
+                root, _ = solver_func(g, x0, eps=eps, max_iter=max_iter, verbose=False)
+            except Exception:
+                # если совсем не получилось (например, выход за область определения)
+                root = None
+
+
+        #Если корень не найден, увеличиваем failed и переходим к следующей точке.
+            if root is None:
+                failed += 1
+                print(f"{x0:<16.10f} {'---':<18} ❌ не сошлось")
+                continue
+
+            # Проверяем, что корень лежит в пределах отрезка (с небольшим запасом)
+            # margin — запас в 10% от длины отрезка
+            margin = (b - a) * 0.1  # 10% от длины отрезка
+            
+            #метод может «убежать» далеко от отрезка и сойтись к корню, который нам не нужен. 
+            #Например, для x = x² - 2 на отрезке [0, 3] есть корень 2, но есть и второй корень -1 — он за пределами отрезка, 
+            #и мы его отбрасываем.
+            if root < a - margin or root > b + margin:
+                print(f"{x0:<16.10f} {root:<18.10f} ⚠️  выход за отрезок, отброшен")
+                continue
+
+
+
+            raw_roots.append(root)
+            print(f"{x0:<16.10f} {root:<18.10f} ✅")
+        
+        #Если ни одна точка не дала корня — возвращаем пустой список и советуем изменить параметры.
+        if not raw_roots:
+            print(f"\n❌ Не найдено ни одного корня (неудачных запусков: {failed}).")
+            print("   Попробуйте увеличить num_initial или изменить отрезок.")
+            return []
+
+        # Убираем дубликаты: группируем близкие корни
+        # Из разных стартовых точек метод может сойтись к одному и тому же корню
+        unique_roots = self._filter_unique(raw_roots, eps=eps)
+
+        print(f"\n{'='*70}")
+        print(f"  РЕЗУЛЬТАТЫ ПОИСКА")
+        print(f"{'='*70}")
+        print(f"  Всего сырых корней:     {len(raw_roots)}")
+        print(f"  Уникальных корней:      {len(unique_roots)}")
+        print(f"  Неудачных запусков:     {failed}")
+
+        if unique_roots:
+            print(f"\n  📌 НАЙДЕННЫЕ КОРНИ:")
+            for idx, r in enumerate(unique_roots, 1):
+                print(f"     {idx}. x = {r:.14f}")
+
+        print(f"{'='*70}")
+        return unique_roots
+
+    def _filter_unique(self, roots, eps=1e-10):
+        """
+        Группирует близкие корни (расстояние < tol) и возвращает
+        по одному представителю от каждой группы (среднее арифметическое).
+        
+        Это нужно, потому что из разных стартовых точек метод может
+        сойтись к одному и тому же корню, и мы не хотим выводить дубликаты.
+        """
+        if not roots:
+            return []
+
+        # Сортируем корни по возрастанию
+        sorted_roots = sorted(roots)
+
+        # Порог "одинаковости": корни ближе чем tol считаем одним корнем
+        tol = max(eps, 1e-8)  # не меньше 1e-8
+
+        groups = []
+        current_group = [sorted_roots[0]]
+
+        for r in sorted_roots[1:]:
+            if abs(r - current_group[-1]) < tol:
+                # Этот корень принадлежит текущей группе
+                current_group.append(r)
+            else:
+                # Начинаем новую группу
+                groups.append(current_group)
+                current_group = [r]
+
+        groups.append(current_group)  # не забываем последнюю группу
+
+        # Вычисляет среднее арифметическое в каждой группе
+        unique = []
+        for grp in groups:
+            avg = sum(grp) / len(grp)
+            unique.append(avg)
+
+        return unique
+
+
+def menu():
+    """Главное меню программы."""
+    solver = SteffensenSolver()
+    
+    print("\n" + "="*70)
+    print("   МПИ + λ²-ПРОЦЕСС ЭЙТКЕНА (МЕТОД СТЕФФЕНСЕНА)")
+    print("="*70)
+    print("Решает уравнения вида x = g(x)")
+    print()
+    print("Встроенные функции: sin, cos, tan, asin, acos, atan,")
+    print("  sinh, cosh, tanh, exp, log, sqrt, abs, pi, e")
+    print()
+    print("Примеры ввода:")
+    print("  cos(x)        — корень x = cos(x)")
+    print("  exp(-x)       — корень x = exp(-x)")
+    print("  1 + sin(x)/2  — корень x = 1 + sin(x)/2")
+    print("="*70)
+    
+    while True:
+        print("\n" + "-"*70)
+        print("МЕНЮ:")
+        print("  1 — Решить методом Стеффенсена (МПИ + λ²-Эйткен) — одно x0")
+        print("  2 — Решить обычным МПИ — одно x0")
+        print("  3 — Сравнить оба метода — одно x0")
+        print("  4 — Найти ВСЕ корни на отрезке")
+        print("  5 — Запустить демо-примеры")
+        print("  0 — Выход")
+        print("-"*70)
+        
+        choice = input("Выбор [0-5]: ").strip()
+        
+        if choice == '0':
+            print("\nДо свидания!")
+            break
+        
+        elif choice in ('1', '2', '3'):
+            # ========== Режим одного x0 (с подробными таблицами) ==========
+            print("\nВведите функцию g(x) для уравнения x = g(x):")
+            print("  (можно ввести 'cos(x)' или 'x = cos(x)' — оба варианта работают)")
+            eq_str = input("g(x) = ").strip()
+            
+            if not eq_str:
+                print("❌ Функция не может быть пустой.")
+                continue
+            
+            try:
+                g, parsed = solver.create_g(eq_str)
+            except Exception as e:
+                print(f"❌ {e}")
+                continue
+            
+            x0_str = input("Начальное приближение x0 [0.5]: ").strip()
+            try:
+                x0 = float(x0_str) if x0_str else 0.5
+            except ValueError:
+                print("❌ Некорректное число.")
+                continue
+            
+            eps_str = input("Точность [1e-10]: ").strip()
+            try:
+                eps = float(eps_str) if eps_str else 1e-10
+            except ValueError:
+                print("❌ Некорректная точность.")
+                continue
+            
+            maxit_str = input("Максимум итераций [100]: ").strip()
+            try:
+                max_iter = int(maxit_str) if maxit_str else 100
+            except ValueError:
+                print("❌ Некорректное число итераций.")
+                continue
+            
+            print(f"\n📝 ПАРАМЕТРЫ:")
+            print(f"  g(x) = {parsed}")
+            print(f"  x0 = {x0},  eps = {eps},  max_iter = {max_iter}")
+            
+            if choice == '1':
+                result, _ = solver.solve_steffensen(g, x0, eps, max_iter, verbose=True)
+                if result is None:
+                    print("\n💡 СОВЕТ: Попробуйте другое начальное приближение или проверьте,")
+                    print("   что функция определена для всех значений в процессе итераций.")
+            elif choice == '2':
+                result, _ = solver.solve_mpi(g, x0, eps, max_iter, verbose=True)
+                if result is None:
+                    print("\n💡 СОВЕТ: Попробуйте другое начальное приближение.")
+            elif choice == '3':
+                solver.compare_single(g, x0, eps, max_iter)
+        
+        elif choice == '4':
+            # ========== Поиск всех корней на отрезке ==========
+            print("\nВведите функцию g(x) для уравнения x = g(x):")
+            eq_str = input("g(x) = ").strip()
+
+            if not eq_str:
+                print("❌ Функция не может быть пустой.")
+                continue
+
+            try:
+                g, parsed = solver.create_g(eq_str)
+            except Exception as e:
+                print(f"❌ {e}")
+                continue
+
+            # Выбор метода для поиска корней
+            print("\nКаким методом искать?")
+            print("  1 — Метод Стеффенсена")
+            print("  2 — Обычный МПИ")
+            print("  3 — Оба метода (сравнить)")
+            method_choice = input("Выбор [1-3]: ").strip()
+
+            # Ввод отрезка
+            a_str = input("Левая граница отрезка a [0]: ").strip()
+            try:
+                a = float(a_str) if a_str else 0.0
+            except ValueError:
+                print("❌ Некорректное число.")
+                continue
+
+            b_str = input("Правая граница отрезка b [10]: ").strip()
+            try:
+                b = float(b_str) if b_str else 10.0
+            except ValueError:
+                print("❌ Некорректное число.")
+                continue
+
+            if a >= b:
+                print("❌ Левая граница должна быть меньше правой.")
+                continue
+
+            eps_str = input("Точность [1e-10]: ").strip()
+            try:
+                eps = float(eps_str) if eps_str else 1e-10
+            except ValueError:
+                print("❌ Некорректная точность.")
+                continue
+
+            maxit_str = input("Максимум итераций [100]: ").strip()
+            try:
+                max_iter = int(maxit_str) if maxit_str else 100
+            except ValueError:
+                print("❌ Некорректное число итераций.")
+                continue
+
+            num_str = input("Число точек разбиения отрезка [50]: ").strip()
+            try:
+                num_initial = int(num_str) if num_str else 50
+            except ValueError:
+                print("❌ Некорректное число.")
+                continue
+
+            print(f"\n📝 ПАРАМЕТРЫ:")
+            print(f"  g(x) = {parsed}")
+            print(f"  Отрезок: [{a}, {b}]")
+            print(f"  Точность: {eps},  max_iter: {max_iter}")
+            print(f"  Точек разбиения: {num_initial}")
+
+            if method_choice == '1':
+                # Только метод Стеффенсена
+                solver.find_all_roots(g, a, b, method='steffensen', eps=eps, max_iter=max_iter, num_initial=num_initial)
+            elif method_choice == '2':
+                # Только обычный МПИ
+                solver.find_all_roots(g, a, b, method='mpi', eps=eps, max_iter=max_iter, num_initial=num_initial)
+            elif method_choice == '3':
+                # Сравнение: оба метода ищут все корни
+                print("\n" + "="*70)
+                print("  СРАВНЕНИЕ МЕТОДОВ (ПОИСК ВСЕХ КОРНЕЙ)")
+                print("="*70)
+                
+                print("\n🔵 МЕТОД СТЕФФЕНСЕНА:")
+                start = time.time()
+                roots_steff = solver.find_all_roots(g, a, b, method='steffensen', eps=eps, max_iter=max_iter, num_initial=num_initial)
+                time_steff = time.time() - start
+                
+                print("\n🔵 ОБЫЧНЫЙ МПИ:")
+                start = time.time()
+                roots_mpi = solver.find_all_roots(g, a, b, method='mpi', eps=eps, max_iter=max_iter, num_initial=num_initial)
+                time_mpi = time.time() - start
+                
+                # Итоговая таблица сравнения
+                print("\n" + "="*70)
+                print("  ИТОГОВОЕ СРАВНЕНИЕ")
+                print("="*70)
+                print(f"  Корней найдено (Стеффенсен):  {len(roots_steff)}")
+                print(f"  Корней найдено (МПИ):         {len(roots_mpi)}")
+                print(f"  Время Стеффенсена:            {time_steff:.4f} сек")
+                print(f"  Время МПИ:                    {time_mpi:.4f} сек")
+                
+                if time_steff > 0 and time_mpi > 0:
+                    if time_mpi > time_steff:
+                        print(f"  🚀 Стеффенсен быстрее в {time_mpi/time_steff:.1f} раз(а)")
+                    else:
+                        print(f"  МПИ быстрее в {time_steff/time_mpi:.1f} раз(а)")
+                
+                # Сравнение корней — сколько совпадает
+                if roots_steff and roots_mpi:
+                    matched = 0
+                    for rs in roots_steff:
+                        for rm in roots_mpi:
+                            if abs(rs - rm) < 1e-8:
+                                matched += 1
+                                break
+                    print(f"  Совпадающих корней:           {matched}")
+                
+                print(f"{'='*70}")
+                
+                print(f"\n💡 ПОЯСНЕНИЕ:")
+                print(f"  МПИ сходится линейно:")
+                print(f"    |x_(n+1) - x*| ≈ λ · |x_n - x*|")
+                print(f"  Процесс Эйткена оценивает λ по трём точкам и исключает её,")
+                print(f"  превращая линейную сходимость в квадратичную.")
+                print()
+            else:
+                print("❌ Неверный выбор метода.")
+        
+        elif choice == '5':
+            run_demos(solver)
+        else:
+            print("Неверный ввод, попробуйте снова.")
+
+
+def run_demos(solver):
+    """Готовые демо-примеры."""
+    print("\n" + "="*70)
+    print("  ДЕМО-ПРИМЕРЫ")
+    print("="*70)
+    print("  Демо 1: одно x0 (сравнение методов с подробными таблицами)")
+    print("  Демо 2: поиск всех корней на отрезке (сравнение методов)")
+    print()
+    print("  1 — Демо с одним x0")
+    print("  2 — Демо с поиском корней на отрезке")
+    
+    demo_choice = input("Выбор [1-2]: ").strip()
+    
+    if demo_choice == '1':
+        # Демо с одним x0 — подробные таблицы итераций
+        demos = [
+            ("x = cos(x)", "cos(x)", 0.5, 1e-10),
+            ("x = exp(-x)", "exp(-x)", 0.5, 1e-10),
+            ("x = 1 + sin(x)/2", "1 + sin(x)/2", 1.0, 1e-10),
+            ("x = sqrt(x+1)", "sqrt(x+1)", 1.5, 1e-10),
+        ]
+        
+        for idx, (name, expr, x0, eps) in enumerate(demos):
+            print("\n" + "="*70)
+            print(f"  ДЕМО: {name}")
+            print("="*70)
+            try:
+                g, _ = solver.create_g(expr)
+                solver.compare_single(g, x0, eps, max_iter=100)
+            except Exception as e:
+                print(f"❌ Ошибка в демо: {e}")
+            
+            if idx < len(demos) - 1:
+                input("\nНажмите Enter для следующего примера...")
+    
+    elif demo_choice == '2':
+        # Демо с поиском всех корней на отрезке
+        demos = [
+            ("x = cos(x) на [0, 10]", "cos(x)", 0, 10, 1e-10, 30),
+            ("x = exp(-x) на [0, 5]", "exp(-x)", 0, 5, 1e-10, 30),
+            ("x = 1 + sin(x)/2 на [0, 5]", "1 + sin(x)/2", 0, 5, 1e-10, 30),
+            ("x = sqrt(x+1) на [0, 5]", "sqrt(x+1)", 0, 5, 1e-10, 30),
+        ]
+        
+        for idx, (name, expr, a, b, eps, num) in enumerate(demos):
+            print("\n" + "="*70)
+            print(f"  ДЕМО: {name}")
+            print("="*70)
+            try:
+                g, parsed = solver.create_g(expr)
+                print(f"  g(x) = {parsed}")
+                
+                print("\n🔵 Метод Стеффенсена:")
+                start = time.time()
+                roots_steff = solver.find_all_roots(g, a, b, method='steffensen', eps=eps, max_iter=100, num_initial=num)
+                time_steff = time.time() - start
+                
+                print("\n🔵 Обычный МПИ:")
+                start = time.time()
+                roots_mpi = solver.find_all_roots(g, a, b, method='mpi', eps=eps, max_iter=100, num_initial=num)
+                time_mpi = time.time() - start
+                
+                print(f"\n📊 СРАВНЕНИЕ:")
+                print(f"  Корней (Стеффенсен): {len(roots_steff)} за {time_steff:.4f} сек")
+                print(f"  Корней (МПИ):        {len(roots_mpi)} за {time_mpi:.4f} сек")
+                
+            except Exception as e:
+                print(f"❌ Ошибка в демо: {e}")
+            
+            if idx < len(demos) - 1:
+                input("\nНажмите Enter для следующего примера...")
+
+
+if __name__ == "__main__":
+    menu()
