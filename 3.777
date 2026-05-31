@@ -1,0 +1,650 @@
+import math
+import time
+
+
+class EquationSolver:
+    """
+    Решатель уравнений методами:
+    1. МПИ (Метод Простых Итераций)
+    2. Δ²-процесс Эйткена (ускорение сходимости)
+    """
+    
+    def __init__(self):
+        self.safe_dict = {
+            'sin': math.sin, 'cos': math.cos, 'tan': math.tan,
+            'asin': math.asin, 'acos': math.acos, 'atan': math.atan,
+            'sinh': math.sinh, 'cosh': math.cosh, 'tanh': math.tanh,
+            'exp': math.exp, 'log': math.log, 'log10': math.log10,
+            'log2': math.log2, 'sqrt': math.sqrt, 'abs': abs,
+            'pi': math.pi, 'e': math.e, 'ceil': math.ceil, 'floor': math.floor
+        }
+    
+    def create_g(self, equation_str):
+        """Парсит строку и создаёт функцию g(x) для МПИ x = g(x)."""
+        equation_str = equation_str.strip()
+        
+        if '=' in equation_str:
+            parts = equation_str.split('=') #проверяет, есть ли в строке знак =. Если да, разбивает строку на части.(!)
+            
+            if len(parts) == 2:
+                left = parts[0].strip()
+                right = parts[1].strip()#если частей ровно две (слева и справа от =), убираем пробелы с каждой.
+                
+                
+                if left == 'x':
+                    expr = right
+                elif right == 'x': #Определяет, где располагается 'x'
+                    expr = left
+                else:
+                    print("[ВНИМАНИЕ] Уравнение не в форме 'x = g(x)'. Использую правую часть как g(x).")
+                    expr = right
+                    
+                    
+            else:
+                expr = parts[-1].strip()#если знаков = больше одного (например, "x = y = z"), берём последнюю часть.
+        else:
+            expr = equation_str#если знака = нет (пользователь ввёл просто "cos(x)"), используем всю строку как выражение.
+        
+        expr = expr.replace('^', '**') #Замена степени на Пайтоновскую **
+        
+        code = compile(expr, '<input>', 'eval')# превращает строку в готовый к выполнению байт-код.(быстрее ,чем парсинг)
+        
+        
+        safe_dict = self.safe_dict #сохраняем ссылку на словарь с функциями, чтобы она была доступна внутри g(x).
+        
+        def g(x):
+            try:
+                safe_dict['x'] = x# кладём текущее значение x в словарь
+                result = eval(code, {"__builtins__": {}}, safe_dict)
+                
+                if not isinstance(result, (int, float)):#Проверка на то, что result это число 
+                    raise ValueError(f"Функция вернула не число, а {type(result)}")
+                    
+                if math.isnan(result) or math.isinf(result):#проверяет, не является ли результат NaN (Not a Number) или бесконечностью.
+                    raise ValueError(f"Функция вернула {result}")
+                return result
+            except Exception as e:
+                raise ValueError(f"Ошибка при вычислении g({x}): {e}")
+                
+        
+        #Пробует вызвать g(x) на 4 разных точках.
+        #Если хотя бы одна точка сработала — всё хорошо.
+        test_points = [0.0, 0.5, 1.0, -0.5]
+        test_ok = False
+        last_error = None
+        
+        for tp in test_points:
+            try:
+                val = g(tp)
+                test_ok = True
+            except Exception as e:
+                last_error = e
+        
+        if not test_ok:
+            raise ValueError(f"Функция не работает ни на одном тестовом значении. Пример ошибки: {last_error}")
+        
+        #возвращает кортеж из двух элементов:
+        #g — готовая к использованию функция.
+        #expr — строка выражения (для вывода на экран).
+        
+        return g, expr
+    
+    
+    
+    
+    #g — функция правой части x = g(x)
+    #x0 — начальное приближение
+    #eps — требуемая точность (по умолчанию 0.0000000001)
+    #max_iter — максимальное число итераций (защита от бесконечного цикла)
+    #verbose — печатать ли таблицу (True) или работать молча (False для compare)
+    def solve_mpi(self, g, x0, eps=1e-10, max_iter=100, verbose=True):
+        """
+        Метод Простых Итераций: x_{n+1} = g(x_n).
+        Сходимость линейная: |x_{n+1} - x*| ≈ λ · |x_n - x*|.
+        Возвращает: (корень, история_итераций) или (None, история)
+        """
+        history = [(0, x0, abs(x0 - x0))]# создаёт список history, который будет хранить информацию о всех итерациях.
+        
+        if verbose:
+            print(f"\n{'МЕТОД ПРОСТЫХ ИТЕРАЦИЙ (МПИ)':-^65}")
+            print(f"{'Итер.':<8} {'x_n':<30} {'Невязка':<18}")
+            print("-" * 56)
+        
+        x_prev = x0
+        for i in range(1, max_iter + 1):
+            try:
+                x_new = g(x_prev)# Это шаг МПИ: вычисляем следующее приближения, подставляя текущее в функцию
+                #x(n+1)=g(xn)
+            except ValueError as e:
+                if verbose:
+                    print(f"\n❌ ОШИБКА на итерации {i}: {e}")
+                    print(f"   x_{i-1} = {x_prev} — функция вышла за область определения.")
+                return None, history
+            
+            err = abs(x_new - x_prev)#абсолютная разница между новым и предыдущим значением. Это невязка
+            history.append((i, x_new, err))
+            
+            
+            #проверка сходимости, обновление точки.
+            if verbose:
+                print(f"{i:<8} {str(x_new):<30} {err:<18.2e}")
+            if err < eps:#Если невязка (изменение за итерацию) меньше требуемой точности, считаем, что метод сошёлся.
+                if verbose:
+                    print(f"\n✅ МПИ сошелся за {i} итераций.")
+                    print(f"Корень: x = {x_new}")
+                return x_new, history
+            
+            x_prev = x_new
+            
+        #Обработка случая, когда метод не сошёлся за отведённое число итераций.
+        if verbose:
+            print(f"\n⚠️  МПИ: достигнут лимит в {max_iter} итераций.")
+        return x_prev, history
+    
+    
+    # ============================================================
+    # Δ²-ПРОЦЕСС ЭЙТКЕНА (ускорение последовательности)
+    # ============================================================
+    def accelerate_aitken(self, sequence, verbose=True):
+        """
+        Δ²-процесс Эйткена.
+        Применяется к ЛЮБОЙ последовательности чисел.
+        По трём точкам (x_n, x_{n+1}, x_{n+2}) вычисляет ускоренное значение.
+        
+        Формула: x* = x_n - (Δx_n)² / Δ²x_n
+        
+        Параметры:
+            sequence : список чисел (минимум 3 элемента)
+        Возвращает:
+            список ускоренных значений (на 2 элемента короче исходного)
+        """
+        if len(sequence) < 3:
+            print("❌ Для процесса Эйткена нужно минимум 3 точки.")
+            return []
+        
+        accelerated = []#создаёт пустой список, в который будут складываться ускоренные значения.
+        
+        if verbose:
+            print(f"\n{'Δ²-ПРОЦЕСС ЭЙТКЕНА':-^110}")
+            print(f"{'n':<5} {'x_n':<28} {'x_{n+1}':<28} {'x_{n+2}':<28} {'Δx_n':<28} {'Δ²x_n':<14} {'λ~':<12} {'x* (Эйткен)':<30}")
+            print("-" * 110)
+        
+        for n in range(len(sequence) - 2):#проходит по всем возможным тройкам последовательности.
+            x_n = sequence[n]
+            x_n1 = sequence[n + 1]
+            x_n2 = sequence[n + 2]
+            
+            #  «скорость» изменения последовательности. На сколько изменилось значение за один шаг.
+            dx = x_n1 - x_n
+            
+            # Вторая разность (ускорение изменения) — знаменатель в формуле Эйткена
+            d2x = x_n2 - 2.0 * x_n1 + x_n
+            
+            #Просмотр на если знаменатель почти ноль
+            if abs(d2x) < 1e-15:
+                x_star = x_n2
+                lambda_est = None
+            else:
+                # Оценка λ (коэффициента затухания)
+                lambda_est = (x_n2 - x_n1) / dx if abs(dx) > 1e-15 else None #проверка, что первая разность не слишком мала
+                # Формула Эйткена: x* = x_n - (Δx)² / Δ²x
+                x_star = x_n - (dx ** 2) / d2x
+            
+            accelerated.append(x_star)
+            
+            if verbose:
+                lam_str = f"{lambda_est:.6f}" if lambda_est is not None else "---"
+                print(f"{n:<5} {str(x_n):<28} {str(x_n1):<28} {str(x_n2):<28} {str(dx):<28} {d2x:<14.2e} {lam_str:<12} {str(x_star):<30}")
+        
+        if verbose:
+            print(f"\n✅ Исходная последовательность: {len(sequence)} точек")
+            print(f"✅ Ускоренная последовательность: {len(accelerated)} точек")
+        
+        return accelerated
+    
+    
+    # ============================================================
+    # МПИ + последующее ускорение Эйткена
+    # ============================================================
+    def solve_mpi_with_aitken(self, g, x0, eps=1e-10, max_iter=100, verbose=True):
+        """
+        Сначала строит последовательность методом МПИ,
+        затем применяет к ней Δ²-процесс Эйткена.
+        """
+        if verbose:
+            print("\n" + "="*70)
+            print("  МПИ + ПОСЛЕДУЮЩЕЕ УСКОРЕНИЕ ЭЙТКЕНА")
+            print("="*70)
+        
+        # Шаг 1: строим последовательность МПИ
+        if verbose:
+            print(f"\n🔵 Шаг 1: Метод Простых Итераций")
+        #root_mpi=корень, найденный МПИ,history_mpi — история всех итераций МПИ.
+        root_mpi, history_mpi = self.solve_mpi(g, x0, eps=eps, max_iter=max_iter, verbose=True)
+        
+        if root_mpi is None:
+            if verbose:
+                print("\n❌ МПИ не сошёлся, ускорение невозможно.")
+            return None, []
+        
+        # Собираем значения x_n из истории МПИ
+        mpi_sequence = [h[1] for h in history_mpi]#создаёт новый список, содержащий только значения 
+        #xn в порядке итераций.
+        
+        if len(mpi_sequence) < 3:#МПИ сошёлся за 1-2 итерации (очень быстрая сходимость). В этом случае процесс Эйткена не нужен.
+            if verbose:
+                print("\n❌ Слишком мало точек для ускорения (нужно минимум 3).")
+            return root_mpi, mpi_sequence
+        
+        # Шаг 2: ускоряем последовательность
+        if verbose:
+            print(f"\n🔵 Шаг 2: Δ²-процесс Эйткена (по {len(mpi_sequence)} точкам)")
+        
+        accelerated = self.accelerate_aitken(mpi_sequence, verbose=True)
+        
+        if verbose and accelerated:
+            print(f"\n{'='*70}")
+            print(f"  РЕЗУЛЬТАТ:")
+            print(f"  Корень (МПИ):              {root_mpi}")
+            print(f"  Лучшее ускорение Эйткена:  {accelerated[-1]}")
+            print(f"  Точек МПИ:                 {len(mpi_sequence)}")
+            print(f"  Ускоренных точек:          {len(accelerated)}")
+            print(f"{'='*70}")
+        
+        return root_mpi, accelerated
+    
+    
+    # ============================================================
+    # Поиск всех корней на отрезке [a, b]
+    # ============================================================
+    def find_all_roots(self, g, a, b, method='mpi', eps=1e-10, max_iter=100, num_initial=50):
+        """
+        Поиск всех корней уравнения x = g(x) на отрезке [a, b].
+
+        Идея:
+          - Разбиваем отрезок [a, b] на num_initial равных частей.
+          - Из каждой точки разбиения запускаем выбранный метод.
+          - Собираем все найденные корни.
+          - Убираем дубликаты (корни, отличающиеся менее чем на погрешность).
+
+        Параметры:
+          g            : функция правой части x = g(x)
+          a, b         : границы отрезка
+          method       : 'mpi' или 'aitken' — каким методом искать
+          eps          : точность для метода
+          max_iter     : максимальное число итераций
+          num_initial  : на сколько частей разбить отрезок для сканирования
+
+        Возвращает:
+          список уникальных корней (отсортированный)
+        """
+        method_name = "МПИ" if method == 'mpi' else "МПИ + ускорение Эйткена"
+        
+        print("\n" + "="*70)
+        print(f"  ПОИСК ВСЕХ КОРНЕЙ НА ОТРЕЗКЕ [{a}, {b}]")
+        print(f"  Метод: {method_name}")
+        print("="*70)
+        print(f"  Отрезок:          [{a}, {b}]")
+        print(f"  Точек разбиения:  {num_initial}")
+        print(f"  Точность (eps):   {eps}")
+        print()
+
+        # Генерируем точки разбиения (включая концы отрезка)
+        # h — шаг разбиения (расстояние между соседними точками)
+        h = (b - a) / num_initial
+        start_points = [a + i * h for i in range(num_initial + 1)]
+
+        raw_roots = []   # сюда будем складывать все найденные корни
+        failed = 0       # счётчик неудачных запусков
+
+        print("Сканирование отрезка...")
+        print(f"{'Старт x0':<28} {'Результат':<28} {'Статус'}")
+        print("-" * 65)
+        
+        
+        #Запускается выбранный метод (solve_mpi или solve_mpi_with_aitken) с verbose=False — без таблицы, иначе вывод был бы слишком большим.
+        #Метод возвращает кортеж (корень, история). Нам нужен только корень — root.
+        #Если метод выбросил ошибку (например, log(-5)), root становится None.
+        for x0 in start_points:
+            try:
+                #verbose=False — метод работает молча, без вывода таблиц итераций
+                if method == 'mpi':
+                    root, _ = self.solve_mpi(g, x0, eps=eps, max_iter=max_iter, verbose=False)
+                else:
+                    root_mpi, history_mpi = self.solve_mpi(g, x0, eps=eps, max_iter=max_iter, verbose=False)
+                    if root_mpi is not None and len(history_mpi) >= 3:#Если МПИ сошёлся и есть ≥3 точек:
+                        mpi_sequence = [h[1] for h in history_mpi]
+                        # каждый кортеж такого типа -(номерИтерации.ЗначениеX.невязка)
+                        accel = self.accelerate_aitken(mpi_sequence, verbose=False)
+                        root = accel[-1] if accel else root_mpi
+                    else:
+                        root = root_mpi
+            except Exception:
+                # если совсем не получилось (например, выход за область определения)
+                root = None
+
+
+        #Если корень не найден, увеличиваем failed и переходим к следующей точке.
+            if root is None:
+                failed += 1
+                print(f"{str(x0):<28} {'---':<28} ❌ не сошлось")
+                continue
+
+            # Проверяем, что корень лежит в пределах отрезка (с небольшим запасом)
+            # margin — запас в 10% от длины отрезка
+            margin = (b - a) * 0.1  # 10% от длины отрезка
+            
+            #метод может «убежать» далеко от отрезка и сойтись к корню, который нам не нужен. 
+            #Например, для x = x² - 2 на отрезке [0, 3] есть корень 2, но есть и второй корень -1 — он за пределами отрезка, 
+            #и мы его отбрасываем.
+            if root < a - margin or root > b + margin:
+                print(f"{str(x0):<28} {str(root):<28} ⚠️  выход за отрезок, отброшен")
+                continue
+
+
+
+            raw_roots.append(root)
+            print(f"{str(x0):<28} {str(root):<28} ✅")
+        
+        #Если ни одна точка не дала корня — возвращаем пустой список и советуем изменить параметры.
+        if not raw_roots:
+            print(f"\n❌ Не найдено ни одного корня (неудачных запусков: {failed}).")
+            print("   Попробуйте увеличить num_initial или изменить отрезок.")
+            return []
+
+        # Убираем дубликаты: группируем близкие корни
+        # Из разных стартовых точек метод может сойтись к одному и тому же корню
+        unique_roots = self._filter_unique(raw_roots, eps=eps)
+
+        print(f"\n{'='*70}")
+        print(f"  РЕЗУЛЬТАТЫ ПОИСКА")
+        print(f"{'='*70}")
+        print(f"  Всего сырых корней:     {len(raw_roots)}")
+        print(f"  Уникальных корней:      {len(unique_roots)}")
+        print(f"  Неудачных запусков:     {failed}")
+
+        if unique_roots:
+            print(f"\n  📌 НАЙДЕННЫЕ КОРНИ:")
+            for idx, r in enumerate(unique_roots, 1):
+                print(f"     {idx}. x = {r}")
+
+        print(f"{'='*70}")
+        return unique_roots
+
+    def _filter_unique(self, roots, eps=1e-10):
+        """
+        Группирует близкие корни (расстояние < tol) и возвращает
+        по одному представителю от каждой группы (среднее арифметическое).
+        
+        Это нужно, потому что из разных стартовых точек метод может
+        сойтись к одному и тому же корню, и мы не хотим выводить дубликаты.
+        """
+        if not roots:
+            return []
+
+        # Сортируем корни по возрастанию
+        sorted_roots = sorted(roots)
+
+        # Порог "одинаковости": корни ближе чем tol считаем одним корнем
+        tol = max(eps, 1e-8)  # не меньше 1e-8
+
+        groups = []
+        current_group = [sorted_roots[0]]
+
+        for r in sorted_roots[1:]:
+            if abs(r - current_group[-1]) < tol:
+                # Этот корень принадлежит текущей группе
+                current_group.append(r)
+            else:
+                # Начинаем новую группу
+                groups.append(current_group)
+                current_group = [r]
+
+        groups.append(current_group)  # не забываем последнюю группу
+
+        # Вычисляет среднее арифметическое в каждой группе
+        unique = []
+        for grp in groups:
+            avg = sum(grp) / len(grp)
+            unique.append(avg)
+
+        return unique
+
+
+def menu():
+    """Главное меню программы."""
+    solver = EquationSolver()
+    
+    print("\n" + "="*70)
+    print("   МЕТОД ПРОСТЫХ ИТЕРАЦИЙ (МПИ) И Δ²-ПРОЦЕСС ЭЙТКЕНА")
+    print("="*70)
+    print("Решает уравнения вида x = g(x)")
+    print()
+    print("Встроенные функции: sin, cos, tan, asin, acos, atan,")
+    print("  sinh, cosh, tanh, exp, log, sqrt, abs, pi, e")
+    print()
+    print("Примеры ввода:")
+    print("  cos(x)        — корень x = cos(x)")
+    print("  exp(-x)       — корень x = exp(-x)")
+    print("  1 + sin(x)/2  — корень x = 1 + sin(x)/2")
+    print("="*70)
+    
+    while True:
+        print("\n" + "-"*70)
+        print("МЕНЮ:")
+        print("  1 — Решить обычным МПИ (одно x0)")
+        print("  2 — МПИ + ускорение Эйткена (одно x0)")
+        print("  3 — Найти ВСЕ корни на отрезке (МПИ)")
+        print("  4 — Найти ВСЕ корни на отрезке (МПИ + Эйткен)")
+        print("  5 — Демо-примеры")
+        print("  0 — Выход")
+        print("-"*70)
+        
+        choice = input("Выбор [0-5]: ").strip()
+        
+        if choice == '0':
+            print("\nДо свидания!")
+            break
+        
+        elif choice in ('1', '2'):
+            # ========== Режим одного x0 (с подробными таблицами) ==========
+            print("\nВведите функцию g(x) для уравнения x = g(x):")
+            print("  (можно ввести 'cos(x)' или 'x = cos(x)' — оба варианта работают)")
+            eq_str = input("g(x) = ").strip()
+            
+            if not eq_str:
+                print("❌ Функция не может быть пустой.")
+                continue
+            
+            try:
+                g, parsed = solver.create_g(eq_str)
+            except Exception as e:
+                print(f"❌ {e}")
+                continue
+            
+            x0_str = input("Начальное приближение x0 [0.5]: ").strip()
+            try:
+                x0 = float(x0_str) if x0_str else 0.5
+            except ValueError:
+                print("❌ Некорректное число.")
+                continue
+            
+            eps_str = input("Точность [1e-10]: ").strip()
+            try:
+                eps = float(eps_str) if eps_str else 1e-10
+            except ValueError:
+                print("❌ Некорректная точность.")
+                continue
+            
+            maxit_str = input("Максимум итераций [100]: ").strip()
+            try:
+                max_iter = int(maxit_str) if maxit_str else 100
+            except ValueError:
+                print("❌ Некорректное число итераций.")
+                continue
+            
+            print(f"\n📝 ПАРАМЕТРЫ:")
+            print(f"  g(x) = {parsed}")
+            print(f"  x0 = {x0},  eps = {eps},  max_iter = {max_iter}")
+            
+            if choice == '1':
+                result, _ = solver.solve_mpi(g, x0, eps, max_iter, verbose=True)
+                if result is None:
+                    print("\n💡 СОВЕТ: Попробуйте другое начальное приближение или проверьте,")
+                    print("   что функция определена для всех значений в процессе итераций.")
+            elif choice == '2':
+                solver.solve_mpi_with_aitken(g, x0, eps=eps, max_iter=max_iter, verbose=True)
+        
+        elif choice in ('3', '4'):
+            # ========== Поиск всех корней на отрезке ==========
+            print("\nВведите функцию g(x) для уравнения x = g(x):")
+            eq_str = input("g(x) = ").strip()
+
+            if not eq_str:
+                print("❌ Функция не может быть пустой.")
+                continue
+
+            try:
+                g, parsed = solver.create_g(eq_str)
+            except Exception as e:
+                print(f"❌ {e}")
+                continue
+
+            # Ввод отрезка
+            a_str = input("Левая граница отрезка a [0]: ").strip()
+            try:
+                a = float(a_str) if a_str else 0.0
+            except ValueError:
+                print("❌ Некорректное число.")
+                continue
+
+            b_str = input("Правая граница отрезка b [10]: ").strip()
+            try:
+                b = float(b_str) if b_str else 10.0
+            except ValueError:
+                print("❌ Некорректное число.")
+                continue
+
+            if a >= b:
+                print("❌ Левая граница должна быть меньше правой.")
+                continue
+
+            eps_str = input("Точность [1e-10]: ").strip()
+            try:
+                eps = float(eps_str) if eps_str else 1e-10
+            except ValueError:
+                print("❌ Некорректная точность.")
+                continue
+
+            maxit_str = input("Максимум итераций [100]: ").strip()
+            try:
+                max_iter = int(maxit_str) if maxit_str else 100
+            except ValueError:
+                print("❌ Некорректное число итераций.")
+                continue
+
+            num_str = input("Число точек разбиения отрезка [50]: ").strip()
+            try:
+                num_initial = int(num_str) if num_str else 50
+            except ValueError:
+                print("❌ Некорректное число.")
+                continue
+
+            print(f"\n📝 ПАРАМЕТРЫ:")
+            print(f"  g(x) = {parsed}")
+            print(f"  Отрезок: [{a}, {b}]")
+            print(f"  Точность: {eps},  max_iter: {max_iter}")
+            print(f"  Точек разбиения: {num_initial}")
+
+            method = 'mpi' if choice == '3' else 'aitken'
+            solver.find_all_roots(g, a, b, method=method, eps=eps, max_iter=max_iter, num_initial=num_initial)
+        
+        elif choice == '5':
+            run_demos(solver)
+        else:
+            print("Неверный ввод, попробуйте снова.")
+
+
+def run_demos(solver):
+    """Готовые демо-примеры."""
+    print("\n" + "="*70)
+    print("  ДЕМО-ПРИМЕРЫ")
+    print("="*70)
+    print("  1 — МПИ (одно x0)")
+    print("  2 — МПИ + ускорение Эйткена (одно x0)")
+    print("  3 — Сравнение МПИ и МПИ+Эйткен на отрезке")
+    
+    demo_choice = input("Выбор [1-3]: ").strip()
+    
+    if demo_choice == '1':
+        # Демо с одним x0 — подробные таблицы итераций
+        demos = [
+            ("x = cos(x)", "cos(x)", 0.5),
+            ("x = exp(-x)", "exp(-x)", 0.5),
+        ]
+        for idx, (name, expr, x0) in enumerate(demos):
+            print("\n" + "="*70)
+            print(f"  ДЕМО: {name}")
+            print("="*70)
+            try:
+                g, _ = solver.create_g(expr)
+                solver.solve_mpi(g, x0, eps=1e-10, max_iter=100, verbose=True)
+            except Exception as e:
+                print(f"❌ {e}")
+            if idx < len(demos) - 1:
+                input("\nНажмите Enter...")
+    
+    elif demo_choice == '2':
+        # Демо МПИ + Эйткен
+        demos = [
+            ("x = cos(x)", "cos(x)", 0.5),
+            ("x = exp(-x)", "exp(-x)", 0.5),
+        ]
+        for idx, (name, expr, x0) in enumerate(demos):
+            print("\n" + "="*70)
+            print(f"  ДЕМО: {name}")
+            print("="*70)
+            try:
+                g, _ = solver.create_g(expr)
+                solver.solve_mpi_with_aitken(g, x0, eps=1e-10, max_iter=100, verbose=True)
+            except Exception as e:
+                print(f"❌ {e}")
+            if idx < len(demos) - 1:
+                input("\nНажмите Enter...")
+    
+    elif demo_choice == '3':
+        # Сравнение на отрезке
+        demos = [
+            ("x = cos(x) на [0, 5]", "cos(x)", 0, 5),
+            ("x = exp(-x) на [0, 3]", "exp(-x)", 0, 3),
+        ]
+        for idx, (name, expr, a, b) in enumerate(demos):
+            print("\n" + "="*70)
+            print(f"  ДЕМО: {name}")
+            print("="*70)
+            try:
+                g, parsed = solver.create_g(expr)
+                print(f"  g(x) = {parsed}")
+                
+                print("\n🔵 Обычный МПИ:")
+                start = time.time()
+                roots_mpi = solver.find_all_roots(g, a, b, method='mpi', eps=1e-10, max_iter=100, num_initial=20)
+                time_mpi = time.time() - start
+                
+                print("\n🔵 МПИ + ускорение Эйткена:")
+                start = time.time()
+                roots_ait = solver.find_all_roots(g, a, b, method='aitken', eps=1e-10, max_iter=100, num_initial=20)
+                time_ait = time.time() - start
+                
+                print(f"\n📊 СРАВНЕНИЕ:")
+                print(f"  Корней (МПИ):        {len(roots_mpi)} за {time_mpi:.4f} сек")
+                print(f"  Корней (МПИ+Эйткен): {len(roots_ait)} за {time_ait:.4f} сек")
+                
+            except Exception as e:
+                print(f"❌ {e}")
+            if idx < len(demos) - 1:
+                input("\nНажмите Enter...")
+
+
+if __name__ == "__main__":
+    menu()
