@@ -1,0 +1,370 @@
+import math
+
+def left_rectangle(f, a, b, n):
+    #f — интегрируемая функция (должна принимать число и возвращать число)
+    #a — нижний предел интегрирования (начало отрезка)
+    #b — верхний предел интегрирования (конец отрезка)
+    #n — количество разбиений (чем больше, тем точнее результат)
+    """Формула левых прямоугольников (1-й порядок)"""
+    h = (b - a) / n#(b - a) длина всего отрезка интегрирования
+    #Делим на n — получаем ширину каждого прямоугольника
+    result = 0.0
+    #Цикл по всем прямоугольникам
+    for i in range(n):#Мы НЕ доходим до точки b=1.Берём только левые границы каждого отрезка,последняя = 0,75
+        x = a + i * h#координата = нижний предел+итерация*шаг разбиения
+        result += f(x)
+    return h * result#После цикла в result накоплена сумма высот всех прямоугольников.
+                    #Умножаем на ширину h, чтобы получить суммарную площадь.
+
+def right_rectangle(f, a, b, n):
+    """Формула правых прямоугольников (1-й порядок)"""
+    h = (b - a) / n
+    result = 0.0
+    for i in range(n):
+        x = a + (i + 1) * h
+        result += f(x)
+    return h * result
+
+def middle_rectangle(f, a, b, n):
+
+    #f — интегрируемая функция
+    #a — нижний предел интегрирования
+    #b — верхний предел интегрирования
+    #n — количество разбиений
+    """Формула средних прямоугольников (2-й порядок)"""
+    h = (b - a) / n
+    result = 0.0
+    for i in range(n):
+        x = a + (i + 0.5) * h
+        result += f(x)
+    return h * result
+
+def trapezoid(f, a, b, n):
+    """Формула трапеций (2-й порядок)"""
+    h = (b - a) / n
+    #Формула площади всех трапеций: S = h * [f(x₀)/2 + f(x₁) + f(x₂) + ... + f(xₙ₋₁) + f(xₙ)/2]
+    #Где x₀ = a, xₙ = b.
+    result = 0.5 * (f(a) + f(b))
+    for i in range(1, n):#цикл от 1 до n-1 (не включая n), то есть только внутренние точки!
+        x = a + i * h
+        result += f(x)
+    return h * result
+
+def simpson(f, a, b, n):
+    """Формула Симпсона (4-й порядок)"""
+    if n % 2 != 0:#Обеспечение чётного числа отрезков
+        n += 1
+    h = (b - a) / n# Вычисление шаг
+    result = f(a) + f(b)#Крайнине точки 
+    for i in range(1, n):
+        x = a + i * h
+        if i % 2 == 0:
+            #формула Симпсона∫ₐᵇ f(x)dx ≈ (h/3) × [f(x₀) + 4f(x₁) + 2f(x₂) + 4f(x₃) + 2f(x₄) + ... + 4f(xₙ₋₁) + f(xₙ)]
+            result += 2 * f(x)#Чётные внутренние точки (i=2,4,6,...): коэффициент 2
+        else:
+            result += 4 * f(x)#Нечётные внутренние точки (i=1,3,5,...): коэффициент 4
+    return h * result / 3
+
+def parse_function(func_str):
+    """
+    Преобразование строки с функцией в исполняемую функцию
+    Поддерживает: x, sin, cos, tan, exp, log, sqrt, pi, e, +, -, *, /, **
+    """
+    # Замена математических функций
+    replacements = {
+        'sin': 'math.sin',
+        'cos': 'math.cos',
+        'tan': 'math.tan',
+        'exp': 'math.exp',
+        'log': 'math.log',
+        'sqrt': 'math.sqrt',
+        'abs': 'math.abs',
+        'pi': 'math.pi',
+        'e': 'math.e',
+        '^': '**'  # Замена ^ на ** для возведения в степень
+    }
+    
+    func_str = func_str.lower().strip()
+    
+    # Заменяем все математические функции
+    for old, new in replacements.items():
+        func_str = func_str.replace(old, new)
+    
+    # Создаем функцию
+    try:
+        # Проверяем, что функция использует переменную x
+        def f(x):
+            return eval(func_str, {"math": math, "x": x, "__builtins__": {}})
+        
+        # Тестируем функцию
+        test_result = f(1.0)
+        return f
+    except Exception as e:
+        print(f"Ошибка в функции: {e}")
+        return None
+
+def get_user_function():
+    """Получение функции от пользователя"""
+    print("\n" + "="*70)
+    print("ВВОД ФУНКЦИИ")
+    print("="*70)
+    print("\nПоддерживаемые операции и функции:")
+    print("  • Переменная: x")
+    print("  • Операции: +, -, *, /, ^ или ** (степень)")
+    print("  • Функции: sin(x), cos(x), tan(x), exp(x), log(x), sqrt(x), abs(x)")
+    print("  • Константы: pi, e")
+    print("\nПримеры функций:")
+    print("  • x^2 + 2*x + 1")
+    print("  • sin(x)")
+    print("  • exp(-x^2)")
+    print("  • 1/x")
+    print("  • x^3 - 3*x^2 + 2*x")
+    
+    while True:
+        func_str = input("\nВведите функцию f(x) = ").strip()
+        f = parse_function(func_str)
+        if f is not None:
+            return f, func_str
+        print("Попробуйте ещё раз.")
+
+def get_integration_limits():
+    """Получение пределов интегрирования"""
+    print("\n" + "="*70)
+    print("ВВОД ПРЕДЕЛОВ ИНТЕГРИРОВАНИЯ")
+    print("="*70)
+    
+    while True:
+        try:
+            a = float(input("Введите нижний предел a = "))
+            b = float(input("Введите верхний предел b = "))
+            if a >= b:
+                print("Ошибка: нижний предел должен быть меньше верхнего!")
+                continue
+            return a, b
+        except ValueError:
+            print("Ошибка: введите числовые значения!")
+
+def get_exact_value():
+    """Получение точного значения интеграла (опционально)"""
+    print("\n" + "="*70)
+    print("ТОЧНОЕ ЗНАЧЕНИЕ ИНТЕГРАЛА (опционально)")
+    print("="*70)
+    print("\nЕсли знаете точное значение, введите его для расчёта погрешностей.")
+    print("Если не знаете, нажмите Enter - погрешности не будут рассчитаны.")
+    
+    while True:
+        exact_str = input("Точное значение (или Enter): ").strip()
+        if exact_str == "":
+            return None
+        try:
+            exact = float(exact_str)
+            return exact
+        except ValueError:
+            print("Ошибка: введите число или нажмите Enter!")
+
+def get_partition_numbers():
+    """Получение чисел разбиений"""
+    print("\n" + "="*70)
+    print("ВВОД ЧИСЕЛ РАЗБИЕНИЙ")
+    print("="*70)
+    print("\nВведите числа разбиений (целые положительные числа).")
+    print("Можно ввести несколько чисел через запятую или пробел.")
+    print("Пример: 4, 8, 16, 32, 64")
+    
+    while True:
+        n_input = input("\nВведите числа разбиений: ").strip()
+        if n_input == "":
+            print("Будут использованы значения по умолчанию: 4, 8, 16, 32, 64")
+            return [4, 8, 16, 32, 64]
+        
+        try:
+            # Разбиваем по запятым или пробелам
+            n_values = []
+            for part in n_input.replace(',', ' ').split():
+                n = int(part)
+                if n <= 0:
+                    print(f"Ошибка: {n} - не положительное число!")
+                    continue
+                if n > 10000:
+                    print(f"Предупреждение: {n} - очень большое число, вычисления могут занять время")
+                n_values.append(n)
+            
+            if len(n_values) == 0:
+                print("Ошибка: не введено ни одного корректного числа!")
+                continue
+            
+            return sorted(set(n_values))  # Убираем дубликаты и сортируем
+        except ValueError:
+            print("Ошибка: введите целые числа!")
+
+def select_methods():
+    """Выбор методов для сравнения"""
+    print("\n" + "="*70)
+    print("ВЫБОР МЕТОДОВ ИНТЕГРИРОВАНИЯ")
+    print("="*70)
+    
+    methods_available = {
+        '1': ('Левые прямоугольники (1-й порядок)', left_rectangle),
+        '2': ('Правые прямоугольники (1-й порядок)', right_rectangle),
+        '3': ('Средние прямоугольники (2-й порядок)', middle_rectangle),
+        '4': ('Трапеции (2-й порядок)', trapezoid),
+        '5': ('Симпсон (4-й порядок)', simpson),
+        '6': ('Все методы', None)
+    }
+    
+    print("\nДоступные методы:")
+    for key, (name, _) in methods_available.items():
+        print(f"  {key}. {name}")
+    
+    while True:
+        choice = input("\nВыберите метод (1-6): ").strip()
+        if choice == '6':
+            return {name: func for key, (name, func) in methods_available.items() 
+                   if key != '6'}
+        elif choice in methods_available and choice != '6':
+            name, func = methods_available[choice]
+            return {name: func}
+        else:
+            print("Ошибка: выберите число от 1 до 6!")
+
+def print_results_table(f, a, b, n_values, methods, exact_value):
+    """Вывод таблицы результатов"""
+    print("\n" + "="*70)
+    print("РЕЗУЛЬТАТЫ ВЫЧИСЛЕНИЙ")
+    print("="*70)
+    
+    if exact_value is not None:
+        print(f"\nТочное значение: {exact_value:.10f}")
+    else:
+        print("\nТочное значение не задано")
+    
+    # Шапка таблицы
+    if exact_value is not None:
+        header = f"\n{'n':<8} {'Метод':<25} {'Результат':<15} {'Абс. погр.':<15} {'Отн. погр.':<15}"
+    else:
+        header = f"\n{'n':<8} {'Метод':<25} {'Результат':<15}"
+    
+    print(header)
+    print("-" * 75)
+    
+    
+    #Перебирает все числа разбиений, которые ввёл пользователь.
+    #Пример: n_values = [4, 8, 16, 32]
+    for n in n_values:
+        for name, method in methods.items():#Метод .items() возвращает пары (ключ, значение):
+            result = method(f, a, b, n)
+            if exact_value is not None:
+                #Вычисление погрешностей
+                error = abs(result - exact_value)#error = abs(result - exact_value)
+                #Модуль разности между вычисленным и точным значением.
+                rel_error = error / abs(exact_value) if exact_value != 0 else error
+                print(f"{n:<8} {name:<25} {result:<15.10f} {error:<15.10e} {rel_error:<15.10e}")
+            else:
+                print(f"{n:<8} {name:<25} {result:<15.10f}")
+
+def analyze_convergence(f, a, b, n_values, methods, exact_value):
+    """Анализ сходимости методов"""
+    #Функция прекращает работу, если выполняется хотя бы одно из двух условий.
+    #exact_value is None
+    #Слишком мало чисел разбиений len(n_values) < 2
+    if exact_value is None or len(n_values) < 2:
+        return
+    
+    print("\n" + "="*70)
+    print("АНАЛИЗ СХОДИМОСТИ МЕТОДОВ")
+    print("="*70)
+    print("\nАнализ отношения погрешностей при последовательном удвоении n:")
+    print("• Для методов 1-го порядка отношение должно быть ≈ 2")
+    print("• Для методов 2-го порядка отношение должно быть ≈ 4")
+    print("• Для методов 4-го порядка отношение должно быть ≈ 16")
+    
+    for name, method in methods.items():#Перебираем все выбранные методы. Для каждого метода будет отдельный блок анализа.
+        print(f"\n{name}:")
+        print(f"{'n₁ → n₂':<15} {'Погр.₁':<15} {'Погр.₂':<15} {'Отношение':<12}")
+        print("-" * 55)
+        
+        prev_error = None#погрешность на предыдущем n (для сравнения)
+        prev_n = None#предыдущее значение n (для вывода)
+        #Цикл по числам разбиений
+        for n in n_values:
+            # Вычисление текущей погрешности
+            result = method(f, a, b, n)
+            error = abs(result - exact_value)
+            
+            if prev_error is not None and prev_error != 0:
+                #Вычисление отношения погрешностей
+                ratio = prev_error / error if error != 0 else float('inf')
+                print(f"{prev_n} → {n:<8} {prev_error:<15.10e} {error:<15.10e} {ratio:<12.2f}")
+            
+            prev_error = error
+            prev_n = n
+
+def show_summary(methods, n_values):
+    """Показать сводку по сравнению методов"""
+    print("\n" + "="*70)
+    print("СВОДКА ПО МЕТОДАМ ПРЯМОУГОЛЬНИКОВ")
+    print("="*70)
+    
+    has_first_order = any('левые' in name.lower() or 'правые' in name.lower() 
+                         for name in methods.keys())
+    has_second_order = any('средние' in name.lower() for name in methods.keys())
+    
+    if has_first_order and has_second_order:
+        print("\nСравнение прямоугольников 1-го и 2-го порядков:")
+        print("• 1-й порядок (левые/правые): погрешность O(h), точны только для констант")
+        print("• 2-й порядок (средние): погрешность O(h²), точны для линейных функций")
+        print("• При одинаковом n средние прямоугольники дают погрешность в n раз меньше")
+        print("• Для достижения одинаковой точности левым/правым требуется n² разбиений")
+    
+    print("\nРекомендации:")
+    print("• Для гладких функций лучше использовать средние прямоугольники")
+    print("• Для быстрых оценок можно использовать левые/правые с большим n")
+    print("• При наличии выбора всегда предпочитайте средние прямоугольники")
+
+def main():
+    """Основная интерактивная программа"""
+    print("="*70)
+    print("ИНТЕРАКТИВНОЕ СРАВНЕНИЕ ФОРМУЛ ПРЯМОУГОЛЬНИКОВ")
+    print("1-го и 2-го порядков")
+    print("="*70)
+    print("\nЭта программа позволяет сравнить методы численного интегрирования")
+    print("на примере вашей собственной функции.")
+    
+    while True:
+        # Ввод данных
+        f, func_str = get_user_function()
+        a, b = get_integration_limits()
+        exact_value = get_exact_value()
+        n_values = get_partition_numbers()
+        methods = select_methods()
+        
+        # Вычисления и вывод
+        print("\n" + "="*70)
+        print("ИСХОДНЫЕ ДАННЫЕ")
+        print("="*70)
+        print(f"Функция: f(x) = {func_str}")
+        print(f"Интервал: [{a}, {b}]")
+        print(f"Числа разбиений: {n_values}")
+        if exact_value is not None:
+            print(f"Точное значение: {exact_value}")
+        print(f"Выбранные методы: {', '.join(methods.keys())}")
+        
+        # Результаты
+        print_results_table(f, a, b, n_values, methods, exact_value)
+        
+        # Анализ сходимости
+        analyze_convergence(f, a, b, n_values, methods, exact_value)
+        
+        # Сводка
+        show_summary(methods, n_values)
+        
+        # Повтор?
+        print("\n" + "="*70)
+        repeat = input("\nХотите выполнить ещё одно вычисление? (да/нет): ").strip().lower()
+        if repeat not in ['да', 'yes', 'y', 'д', 'lf', '1']:
+            break
+    
+    print("\nПрограмма завершена. Спасибо за использование!")
+
+if __name__ == "__main__":
+    main()
