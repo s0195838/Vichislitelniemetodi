@@ -1,0 +1,255 @@
+import math
+from openpyxl import Workbook
+from openpyxl.chart import ScatterChart, Reference, Series
+
+# ------------------------------------------------------------
+# Безопасное создание функций из строк (только math, без numpy)
+# ------------------------------------------------------------
+_allowed_names = {
+    'sin': math.sin, 'cos': math.cos, 'tan': math.tan,
+    'asin': math.asin, 'acos': math.acos, 'atan': math.atan,
+    'atan2': math.atan2, 'sinh': math.sinh, 'cosh': math.cosh,
+    'tanh': math.tanh, 'exp': math.exp, 'log': math.log,
+    'log10': math.log10, 'log2': math.log2, 'sqrt': math.sqrt,
+    'pi': math.pi, 'e': math.e,
+    'abs': abs, 'pow': pow
+}
+
+def make_func_2var(expression):
+    """Создаёт функцию f(x,y) из строки."""
+    return eval(f"lambda x, y: {expression}", {"__builtins__": {}}, _allowed_names)
+
+def make_func_1var(expression):
+    """Создаёт функцию y(x) из строки."""
+    return eval(f"lambda x: {expression}", {"__builtins__": {}}, _allowed_names)
+
+# ------------------------------------------------------------
+# Явный метод Эйлера (без numpy, всё на списках)
+# ------------------------------------------------------------
+def euler_explicit(f, x0, y0, h, x_end):
+    """Возвращает два списка: x и y."""
+    n_steps = int(math.ceil((x_end - x0) / h))
+    # Генерируем список x
+    x = [x0 + i * h for i in range(n_steps + 1)]
+    # Корректируем последнюю точку, если вышли за x_end
+    if x[-1] > x_end + 1e-15:
+        x[-1] = x_end
+    y = [0.0] * (n_steps + 1)
+    y[0] = y0
+    for i in range(n_steps):
+        h_actual = x[i+1] - x[i]
+        y[i+1] = y[i] + h_actual * f(x[i], y[i])
+    return x, y
+
+# ------------------------------------------------------------
+# Вспомогательные функции
+# ------------------------------------------------------------
+def linspace(start, stop, num):
+    """Аналог numpy.linspace (для построения плотной сетки точного решения)."""
+    if num <= 1:
+        return [start]
+    step = (stop - start) / (num - 1)
+    return [start + i * step for i in range(num)]
+
+# ------------------------------------------------------------
+# Ввод данных от пользователя
+# ------------------------------------------------------------
+print("=" * 60)
+print("Явный метод Эйлера: сравнение с точным решением")
+print("=" * 60)
+
+f_str = input("\nВведите правую часть f(x,y) (например: -2*x*y): ").strip()
+y_exact_str = input("Введите точное решение y(x) (например: exp(-x**2)): ").strip()
+
+x0 = float(input("Начальное x0 (например: 0): "))
+y0 = float(input("Начальное условие y0 (например: 1): "))
+x_end = float(input("Конечное x_end (например: 2): "))
+h = float(input("Шаг h (например: 0.2): "))
+
+try:
+    f = make_func_2var(f_str)
+    y_exact = make_func_1var(y_exact_str)
+except Exception as e:
+    print(f"Ошибка при разборе функций: {e}")
+    exit(1)
+
+# ------------------------------------------------------------
+# Расчёт решений
+# ------------------------------------------------------------
+x_h, y_h = euler_explicit(f, x0, y0, h, x_end)
+x_h2, y_h2 = euler_explicit(f, x0, y0, h/2, x_end)
+
+# Значения y_h2 в узлах, совпадающих с сеткой h (каждый второй индекс)
+y_h2_on_h = [y_h2[i] for i in range(0, len(y_h2), 2)]
+
+# Точное решение на плотной сетке для плавного графика (200 точек)
+x_dense = linspace(x0, x_end, 200)
+y_dense = [y_exact(x) for x in x_dense]
+
+# Погрешности в узлах h
+err_h = [abs(y_h[i] - y_exact(x_h[i])) for i in range(len(x_h))]
+err_h2 = [abs(y_h2_on_h[i] - y_exact(x_h[i])) for i in range(len(x_h))]
+
+# Максимальная абсолютная погрешность
+max_err_h = max(err_h)
+max_err_h2 = max(err_h2)
+
+# Оценка фактического порядка точности
+if max_err_h > 0 and max_err_h2 > 0:
+    p_est = math.log2(max_err_h / max_err_h2)
+else:
+    p_est = None
+
+# ------------------------------------------------------------
+# Вывод в консоль
+# ------------------------------------------------------------
+print("\n" + "=" * 70)
+print("Сравнение решений в выбранных точках (сетка h):")
+print(f"{'x':>8}  {'y_exact':>14}  {'y_h':>14}  {'y_h/2':>14}  {'err_h':>12}  {'err_h/2':>12}")
+print("-" * 70)
+
+num_points = min(len(x_h), 12)
+step_indices = max(1, len(x_h) // num_points)
+for i in range(0, len(x_h), step_indices):
+    xi = x_h[i]
+    ye = y_exact(xi)
+    yh = y_h[i]
+    yh2 = y_h2_on_h[i]
+    print(f"{xi:8.4f}  {ye:14.8f}  {yh:14.8f}  {yh2:14.8f}  {err_h[i]:12.2e}  {err_h2[i]:12.2e}")
+
+print(f"\nМаксимальная погрешность при h:   {max_err_h:.8e}")
+print(f"Максимальная погрешность при h/2: {max_err_h2:.8e}")
+if p_est is not None:
+    print(f"Оценка порядка точности p ≈ log2(E_h / E_{{h/2}}) = {p_est:.4f}")
+    print("(Теоретический порядок для явного метода Эйлера: 1)")
+
+# ------------------------------------------------------------
+# Создание Excel-файла
+# ------------------------------------------------------------
+wb = Workbook()
+
+# Лист 1: Таблица сравнения
+ws_table = wb.active
+ws_table.title = "Сравнение"
+headers = ["x", "y_exact", "y_h", "y_h/2", "err_h", "err_h/2"]
+for col_idx, header in enumerate(headers, 1):
+    ws_table.cell(row=1, column=col_idx, value=header)
+
+for i in range(len(x_h)):
+    ws_table.cell(row=i+2, column=1, value=x_h[i])
+    ws_table.cell(row=i+2, column=2, value=y_exact(x_h[i]))
+    ws_table.cell(row=i+2, column=3, value=y_h[i])
+    ws_table.cell(row=i+2, column=4, value=y_h2_on_h[i])
+    ws_table.cell(row=i+2, column=5, value=err_h[i])
+    ws_table.cell(row=i+2, column=6, value=err_h2[i])
+
+# Лист 2: Данные для графиков и диаграммы
+ws_chart = wb.create_sheet("Графики")
+
+# 1. Точное решение (плотная сетка) — колонки A, B
+ws_chart.cell(row=1, column=1, value="x_dense")
+ws_chart.cell(row=1, column=2, value="y_exact_dense")
+for i in range(len(x_dense)):
+    ws_chart.cell(row=i+2, column=1, value=x_dense[i])
+    ws_chart.cell(row=i+2, column=2, value=y_dense[i])
+
+# 2. Решение с шагом h — колонки C, D
+ws_chart.cell(row=1, column=3, value="x_h")
+ws_chart.cell(row=1, column=4, value="y_h")
+for i in range(len(x_h)):
+    ws_chart.cell(row=i+2, column=3, value=x_h[i])
+    ws_chart.cell(row=i+2, column=4, value=y_h[i])
+
+# 3. Решение с шагом h/2 — колонки E, F
+ws_chart.cell(row=1, column=5, value="x_h2")
+ws_chart.cell(row=1, column=6, value="y_h2")
+for i in range(len(x_h2)):
+    ws_chart.cell(row=i+2, column=5, value=x_h2[i])
+    ws_chart.cell(row=i+2, column=6, value=y_h2[i])
+
+# 4. Погрешности — колонки G, H, I
+ws_chart.cell(row=1, column=7, value="x_err")
+ws_chart.cell(row=1, column=8, value="err_h")
+ws_chart.cell(row=1, column=9, value="err_h2")
+for i in range(len(x_h)):
+    ws_chart.cell(row=i+2, column=7, value=x_h[i])
+    ws_chart.cell(row=i+2, column=8, value=err_h[i])
+    ws_chart.cell(row=i+2, column=9, value=err_h2[i])
+
+# Определим последние заполненные строки
+max_row_dense = len(x_dense) + 1
+max_row_h = len(x_h) + 1
+max_row_h2 = len(x_h2) + 1
+max_row_err = len(x_h) + 1
+
+# ------------------------------------------------------------
+# Диаграмма 1: Сравнение решений
+# ------------------------------------------------------------
+chart1 = ScatterChart()
+chart1.title = "Сравнение решений"
+chart1.x_axis.title = "x"
+chart1.y_axis.title = "y"
+chart1.style = 2
+chart1.width = 20
+chart1.height = 12
+
+# Серия: точное решение (сплошная линия)
+y_exact_ref = Reference(ws_chart, min_col=2, min_row=1, max_row=max_row_dense)
+x_exact_ref = Reference(ws_chart, min_col=1, min_row=1, max_row=max_row_dense)
+ser_exact = Series(y_exact_ref, x_exact_ref, title="Точное")
+ser_exact.marker.symbol = None
+ser_exact.graphicalProperties.line.width = 20000
+chart1.series.append(ser_exact)
+
+# Серия: Эйлер h (точки с кружками)
+y_h_ref = Reference(ws_chart, min_col=4, min_row=1, max_row=max_row_h)
+x_h_ref = Reference(ws_chart, min_col=3, min_row=1, max_row=max_row_h)
+ser_h = Series(y_h_ref, x_h_ref, title=f"h={h}")
+ser_h.marker.symbol = 'circle'
+ser_h.marker.size = 5
+chart1.series.append(ser_h)
+
+# Серия: Эйлер h/2 (точки с ромбами)
+y_h2_ref = Reference(ws_chart, min_col=6, min_row=1, max_row=max_row_h2)
+x_h2_ref = Reference(ws_chart, min_col=5, min_row=1, max_row=max_row_h2)
+ser_h2 = Series(y_h2_ref, x_h2_ref, title=f"h={h/2}")
+ser_h2.marker.symbol = 'diamond'
+ser_h2.marker.size = 4
+chart1.series.append(ser_h2)
+
+ws_chart.add_chart(chart1, "K1")  # размещаем правее таблицы
+
+# ------------------------------------------------------------
+# Диаграмма 2: Погрешности (логарифмическая шкала Y)
+# ------------------------------------------------------------
+chart2 = ScatterChart()
+chart2.title = "Погрешности"
+chart2.x_axis.title = "x"
+chart2.y_axis.title = "Абсолютная погрешность"
+chart2.style = 2
+chart2.width = 20
+chart2.height = 12
+chart2.y_axis.scaling.logBase = 10
+
+# Погрешность h
+err_h_ref = Reference(ws_chart, min_col=8, min_row=1, max_row=max_row_err)
+x_err_ref = Reference(ws_chart, min_col=7, min_row=1, max_row=max_row_err)
+ser_err_h = Series(err_h_ref, x_err_ref, title="|y_h - y_exact|")
+ser_err_h.marker.symbol = 'circle'
+ser_err_h.marker.size = 5
+chart2.series.append(ser_err_h)
+
+# Погрешность h/2
+err_h2_ref = Reference(ws_chart, min_col=9, min_row=1, max_row=max_row_err)
+ser_err_h2 = Series(err_h2_ref, x_err_ref, title="|y_{h/2} - y_exact|")
+ser_err_h2.marker.symbol = 'diamond'
+ser_err_h2.marker.size = 4
+chart2.series.append(ser_err_h2)
+
+ws_chart.add_chart(chart2, "K18")
+
+# Сохранение файла
+filename = "euler_no_numpy.xlsx"
+wb.save(filename)
+print(f"\nГотово! Результаты сохранены в файл: {filename}")
+print("Откройте его в Excel для просмотра таблицы и графиков.")
