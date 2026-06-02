@@ -1,255 +1,475 @@
-import math
-from openpyxl import Workbook
-from openpyxl.chart import ScatterChart, Reference, Series
+# ===================================================================
+# ЯВНЫЙ МЕТОД ЭЙЛЕРА ДЛЯ РЕШЕНИЯ ОДУ ПЕРВОГО ПОРЯДКА
+# ===================================================================
+# Программа решает задачу Коши: y' = f(x,y), y(x0) = y0
+# явным методом Эйлера с шагами h и h/2, сравнивает результаты
+# с точным аналитическим решением, вычисляет погрешности
+# и оценивает фактический порядок точности метода.
+# 
+# Результаты сохраняются в CSV-файлы для построения графиков в Excel
+# ===================================================================
 
-# ------------------------------------------------------------
-# Безопасное создание функций из строк (только math, без numpy)
-# ------------------------------------------------------------
+import math  # Математические функции (sin, cos, exp, sqrt и др.)
+import csv   # Запись результатов в CSV-файлы для открытия в Excel
+
+
+# ===================================================================
+# СЛОВАРЬ РАЗРЕШЁННЫХ МАТЕМАТИЧЕСКИХ ФУНКЦИЙ
+# ===================================================================
+# Этот словарь определяет, какие функции и константы можно использовать
+# при вводе выражений f(x,y) и y(x). Без этого eval() не увидит
+# математические функции и выдаст ошибку "name 'exp' is not defined"
+# ===================================================================
 _allowed_names = {
-    'sin': math.sin, 'cos': math.cos, 'tan': math.tan,
-    'asin': math.asin, 'acos': math.acos, 'atan': math.atan,
-    'atan2': math.atan2, 'sinh': math.sinh, 'cosh': math.cosh,
-    'tanh': math.tanh, 'exp': math.exp, 'log': math.log,
-    'log10': math.log10, 'log2': math.log2, 'sqrt': math.sqrt,
-    'pi': math.pi, 'e': math.e,
-    'abs': abs, 'pow': pow
+    # ----- Тригонометрические функции -----
+    'sin': math.sin,      # Синус: sin(x)
+    'cos': math.cos,      # Косинус: cos(x)
+    'tan': math.tan,      # Тангенс: tan(x)
+    
+    # ----- Обратные тригонометрические функции -----
+    'asin': math.asin,    # Арксинус: asin(x)
+    'acos': math.acos,    # Арккосинус: acos(x)
+    'atan': math.atan,    # Арктангенс: atan(x)
+    'atan2': math.atan2,  # Арктангенс от y/x: atan2(y, x)
+    
+    # ----- Гиперболические функции -----
+    'sinh': math.sinh,    # Гиперболический синус
+    'cosh': math.cosh,    # Гиперболический косинус
+    'tanh': math.tanh,    # Гиперболический тангенс
+    
+    # ----- Экспонента и логарифмы -----
+    'exp': math.exp,      # Экспонента: exp(x) = e^x
+    'log': math.log,      # Натуральный логарифм: log(x) = ln(x)
+    'log10': math.log10,  # Десятичный логарифм: log10(x)
+    'log2': math.log2,    # Логарифм по основанию 2: log2(x)
+    
+    # ----- Степенные и корневые функции -----
+    'sqrt': math.sqrt,    # Квадратный корень: sqrt(x)
+    'pow': pow,           # Возведение в степень: pow(x, y) = x^y
+    
+    # ----- Встроенные функции Python -----
+    'abs': abs,           # Абсолютное значение: abs(x) = |x|
+    
+    # ----- Математические константы -----
+    'pi': math.pi,        # Число π ≈ 3.14159
+    'e': math.e,          # Число e ≈ 2.71828
+    'tau': math.tau,      # Число τ = 2π ≈ 6.28318
+    
+    # ----- Дополнительные полезные функции -----
+    'ceil': math.ceil,    # Округление вверх: ceil(2.3) = 3
+    'floor': math.floor,  # Округление вниз: floor(2.7) = 2
+    'fabs': math.fabs,    # Абсолютное значение (возвращает float)
+    'factorial': math.factorial,  # Факториал: factorial(5) = 120
+    'gcd': math.gcd,      # Наибольший общий делитель
+    'degrees': math.degrees,  # Радианы в градусы
+    'radians': math.radians,  # Градусы в радианы
+    'erf': math.erf,      # Функция ошибок
+    'erfc': math.erfc,    # Дополнительная функция ошибок
+    'gamma': math.gamma,  # Гамма-функция
+    'lgamma': math.lgamma # Логарифм гамма-функции
 }
 
+
+# ===================================================================
+# ФУНКЦИЯ СОЗДАНИЯ ДВУХАРГУМЕНТНОЙ ФУНКЦИИ ИЗ СТРОКИ
+# ===================================================================
 def make_func_2var(expression):
-    """Создаёт функцию f(x,y) из строки."""
-    return eval(f"lambda x, y: {expression}", {"__builtins__": {}}, _allowed_names)
+    """
+    Преобразует строковое выражение в функцию от двух переменных f(x,y).
+    
+    Аргументы:
+        expression (str): математическое выражение, например "-2*x*y"
+        
+    Возвращает:
+        function: лямбда-функция вида lambda x, y: выражение
+        
+    Пример:
+        >>> f = make_func_2var("-2*x*y")
+        >>> f(1, 2)
+        -4
+        
+    Механизм работы:
+        Функция использует eval() для компиляции строки в лямбда-выражение.
+        Словарь _allowed_names передаётся как пространство имён, чтобы
+        внутри выражения были доступны математические функции (sin, cos, exp...).
+        Встроенные функции Python заблокированы через {"__builtins__": {}}
+        для безопасности.
+    """
+    try:
+        # eval() компилирует и выполняет строку как код Python
+        # lambda x, y: -2*x*y  — создаёт анонимную функцию
+        # Третий аргумент — словарь доступных имён переменных/функций
+        return eval(
+            f"lambda x, y: {expression}",  # Шаблон лямбда-функции
+            {"__builtins__": {}},          # Блокируем встроенные функции Python
+            _allowed_names                 # Разрешаем только математические функции
+        )
+    except Exception as e:
+        # Если в выражении ошибка (синтаксическая или неверная функция),
+        # перехватываем исключение и показываем понятное сообщение
+        raise ValueError(
+            f"Ошибка в выражении f(x,y) = '{expression}': {e}\n"
+            f"Проверьте синтаксис и доступные функции."
+        )
 
+
+# ===================================================================
+# ФУНКЦИЯ СОЗДАНИЯ ОДНОАРГУМЕНТНОЙ ФУНКЦИИ ИЗ СТРОКИ
+# ===================================================================
 def make_func_1var(expression):
-    """Создаёт функцию y(x) из строки."""
-    return eval(f"lambda x: {expression}", {"__builtins__": {}}, _allowed_names)
+    """
+    Преобразует строковое выражение в функцию от одной переменной y(x).
+    
+    Аргументы:
+        expression (str): математическое выражение, например "exp(-x**2)"
+        
+    Возвращает:
+        function: лямбда-функция вида lambda x: выражение
+        
+    Пример:
+        >>> y = make_func_1var("exp(-x**2)")
+        >>> y(0.5)
+        0.7788007830714049
+        
+    Принцип работы аналогичен make_func_2var, но создаётся функция
+    одной переменной.
+    """
+    try:
+        return eval(
+            f"lambda x: {expression}",    # Создаём функцию от x
+            {"__builtins__": {}},          # Безопасность: нет встроенных функций
+            _allowed_names                 # Доступ к математическим функциям
+        )
+    except Exception as e:
+        raise ValueError(
+            f"Ошибка в выражении y(x) = '{expression}': {e}\n"
+            f"Проверьте синтаксис и доступные функции."
+        )
 
-# ------------------------------------------------------------
-# Явный метод Эйлера (без numpy, всё на списках)
-# ------------------------------------------------------------
+
+# ===================================================================
+# ЯВНЫЙ МЕТОД ЭЙЛЕРА (EXPLICIT EULER METHOD)
+# ===================================================================
 def euler_explicit(f, x0, y0, h, x_end):
-    """Возвращает два списка: x и y."""
+    """
+    Решает ОДУ первого порядка y' = f(x,y) явным методом Эйлера.
+    
+    Аргументы:
+        f (function): правая часть ДУ, функция f(x,y)
+        x0 (float): начальное значение x
+        y0 (float): начальное значение y (y(x0) = y0)
+        h (float): шаг интегрирования
+        x_end (float): конечное значение x
+        
+    Возвращает:
+        tuple: два списка (x, y) — массивы значений аргумента и функции
+        
+    Математическая основа:
+        Явный метод Эйлера первого порядка:
+        y_{n+1} = y_n + h * f(x_n, y_n)
+        x_{n+1} = x_n + h
+        
+        Локальная погрешность: O(h²)
+        Глобальная погрешность: O(h)
+        
+    Пример:
+        >>> def f(x, y): return -2*x*y
+        >>> x, y = euler_explicit(f, 0, 1, 0.2, 1.0)
+        >>> print(f"x = {x[-1]:.2f}, y = {y[-1]:.6f}")
+        x = 1.00, y = 0.327680
+    """
+    # Вычисляем количество шагов (округляем вверх на случай нецелого деления)
     n_steps = int(math.ceil((x_end - x0) / h))
-    # Генерируем список x
+    
+    # Создаём список значений x: [x0, x0+h, x0+2h, ..., x0+n*h]
     x = [x0 + i * h for i in range(n_steps + 1)]
-    # Корректируем последнюю точку, если вышли за x_end
+    
+    # Если последняя точка вышла за x_end (из-за округления), корректируем её
     if x[-1] > x_end + 1e-15:
         x[-1] = x_end
+    
+    # Инициализируем список y нулями
     y = [0.0] * (n_steps + 1)
-    y[0] = y0
+    y[0] = y0  # Начальное условие
+    
+    # Основной цикл метода Эйлера
     for i in range(n_steps):
+        # Фактический шаг (последний шаг может быть меньше h)
         h_actual = x[i+1] - x[i]
+        
+        # Формула явного метода Эйлера:
+        # y_{i+1} = y_i + h * f(x_i, y_i)
         y[i+1] = y[i] + h_actual * f(x[i], y[i])
+    
     return x, y
 
-# ------------------------------------------------------------
-# Вспомогательные функции
-# ------------------------------------------------------------
+
+# ===================================================================
+# ФУНКЦИЯ СОЗДАНИЯ РАВНОМЕРНОЙ СЕТКИ (АНАЛОГ numpy.linspace)
+# ===================================================================
 def linspace(start, stop, num):
-    """Аналог numpy.linspace (для построения плотной сетки точного решения)."""
+    """
+    Создаёт список из num равномерно распределённых точек на отрезке [start, stop].
+    
+    Аргументы:
+        start (float): начало отрезка
+        stop (float): конец отрезка
+        num (int): количество точек
+        
+    Возвращает:
+        list: список из num точек
+        
+    Пример:
+        >>> linspace(0, 1, 5)
+        [0.0, 0.25, 0.5, 0.75, 1.0]
+        
+    Используется для создания плотной сетки для построения
+    гладкого графика точного решения.
+    """
     if num <= 1:
         return [start]
+    
+    # Вычисляем шаг между точками
     step = (stop - start) / (num - 1)
+    
+    # Генерируем список: start + i * step для i от 0 до num-1
     return [start + i * step for i in range(num)]
 
-# ------------------------------------------------------------
-# Ввод данных от пользователя
-# ------------------------------------------------------------
+
+# ===================================================================
+# ОСНОВНАЯ ПРОГРАММА
+# ===================================================================
+
+# ----- Шаг 1: Приветствие и инструкция -----
 print("=" * 60)
 print("Явный метод Эйлера: сравнение с точным решением")
 print("=" * 60)
+print("\nЭта программа решает ОДУ y' = f(x,y) с начальным условием y(x0)=y0")
+print("явным методом Эйлера с шагом h и h/2, сравнивает с точным решением")
+print("и оценивает порядок точности метода.")
+print("\nДоступные математические функции:")
+print("  sin, cos, tan, exp, log, sqrt, pow, pi, e и другие")
+print("\nПримеры ввода:")
+print("  f(x,y): -2*x*y")
+print("  y(x):   exp(-x**2)")
 
-f_str = input("\nВведите правую часть f(x,y) (например: -2*x*y): ").strip()
-y_exact_str = input("Введите точное решение y(x) (например: exp(-x**2)): ").strip()
 
-x0 = float(input("Начальное x0 (например: 0): "))
-y0 = float(input("Начальное условие y0 (например: 1): "))
-x_end = float(input("Конечное x_end (например: 2): "))
-h = float(input("Шаг h (например: 0.2): "))
+# ----- Шаг 2: Ввод данных от пользователя -----
+print("\n" + "-" * 40)
+f_str = input("Введите правую часть f(x,y): ").strip()
+y_exact_str = input("Введите точное решение y(x): ").strip()
 
+# Преобразуем ввод в числа
+x0 = float(input("Начальное значение x0: "))
+y0 = float(input("Начальное условие y0: "))
+x_end = float(input("Конечное значение x_end: "))
+h = float(input("Шаг h: "))
+
+
+# ----- Шаг 3: Создание рабочих функций и проверка -----
 try:
+    # Создаём функцию f(x,y) из введённой строки
     f = make_func_2var(f_str)
+    
+    # Создаём функцию точного решения y(x) из введённой строки
     y_exact = make_func_1var(y_exact_str)
+    
+    # Проверяем, что функции работают корректно
+    test_x, test_y = 0.5, 0.5  # Тестовые значения
+    f_test = f(test_x, test_y)  # Вычисляем f(0.5, 0.5)
+    y_test = y_exact(test_x)    # Вычисляем y(0.5)
+    
+    print(f"\n✓ Функции созданы успешно:")
+    print(f"  f({test_x}, {test_y}) = {f_test:.6f}")
+    print(f"  y_exact({test_x}) = {y_test:.6f}")
+    
+except ValueError as e:
+    # Ошибка при разборе выражения
+    print(f"\n✗ {e}")
+    print("Проверьте синтаксис и попробуйте снова.")
+    exit(1)
 except Exception as e:
-    print(f"Ошибка при разборе функций: {e}")
+    # Любая другая ошибка
+    print(f"\n✗ Непредвиденная ошибка: {e}")
     exit(1)
 
-# ------------------------------------------------------------
-# Расчёт решений
-# ------------------------------------------------------------
-x_h, y_h = euler_explicit(f, x0, y0, h, x_end)
-x_h2, y_h2 = euler_explicit(f, x0, y0, h/2, x_end)
 
-# Значения y_h2 в узлах, совпадающих с сеткой h (каждый второй индекс)
-y_h2_on_h = [y_h2[i] for i in range(0, len(y_h2), 2)]
+# ----- Шаг 4: Численное решение задачи -----
+print("\n" + "-" * 40)
+print("Выполняется расчёт...")
 
-# Точное решение на плотной сетке для плавного графика (200 точек)
-x_dense = linspace(x0, x_end, 200)
-y_dense = [y_exact(x) for x in x_dense]
+try:
+    # Решение с основным шагом h
+    x_h, y_h = euler_explicit(f, x0, y0, h, x_end)
+    
+    # Решение с половинным шагом h/2 (для оценки точности)
+    x_h2, y_h2 = euler_explicit(f, x0, y0, h/2, x_end)
+    
+    # Берём значения с шагом h/2 только в узлах, совпадающих с сеткой h
+    # Так как шаг h/2 вдвое мельче, каждый второй узел совпадает с узлом h
+    y_h2_on_h = [y_h2[i] for i in range(0, len(y_h2), 2)]
+    
+    # Создаём плотную сетку для гладкого графика точного решения (200 точек)
+    x_dense = linspace(x0, x_end, 200)
+    
+    # Вычисляем точное решение на плотной сетке
+    y_dense = [y_exact(x) for x in x_dense]
+    
+    # Вычисляем абсолютные погрешности в узлах сетки h
+    # |y_численное - y_точное|
+    err_h = [abs(y_h[i] - y_exact(x_h[i])) for i in range(len(x_h))]
+    err_h2 = [abs(y_h2_on_h[i] - y_exact(x_h[i])) for i in range(len(x_h))]
+    
+    print(f"✓ Расчёт завершён")
+    print(f"  Шагов с h={h}: {len(x_h)-1}")
+    print(f"  Шагов с h/2={h/2}: {len(x_h2)-1}")
+    
+except Exception as e:
+    print(f"\n✗ Ошибка при вычислениях: {e}")
+    print("Возможно, точное решение содержит ошибку или не соответствует f(x,y).")
+    exit(1)
 
-# Погрешности в узлах h
-err_h = [abs(y_h[i] - y_exact(x_h[i])) for i in range(len(x_h))]
-err_h2 = [abs(y_h2_on_h[i] - y_exact(x_h[i])) for i in range(len(x_h))]
 
-# Максимальная абсолютная погрешность
-max_err_h = max(err_h)
-max_err_h2 = max(err_h2)
+# ----- Шаг 5: Анализ погрешностей и порядка точности -----
 
-# Оценка фактического порядка точности
+# Находим максимальные абсолютные погрешности
+max_err_h = max(err_h)      # Максимальная погрешность с шагом h
+max_err_h2 = max(err_h2)    # Максимальная погрешность с шагом h/2
+
+# Оцениваем фактический порядок точности по правилу Рунге
+# p ≈ log₂(E_h / E_{h/2})
+# Для метода Эйлера теоретический порядок p = 1
 if max_err_h > 0 and max_err_h2 > 0:
     p_est = math.log2(max_err_h / max_err_h2)
 else:
     p_est = None
 
-# ------------------------------------------------------------
-# Вывод в консоль
-# ------------------------------------------------------------
+
+# ----- Шаг 6: Вывод результатов в консоль -----
 print("\n" + "=" * 70)
-print("Сравнение решений в выбранных точках (сетка h):")
-print(f"{'x':>8}  {'y_exact':>14}  {'y_h':>14}  {'y_h/2':>14}  {'err_h':>12}  {'err_h/2':>12}")
+print("РЕЗУЛЬТАТЫ РАСЧЁТА")
+print("=" * 70)
+
+# Таблица сравнения в выбранных точках
+print(f"\n{'x':>8}  {'y_exact':>14}  {'y_h':>14}  {'y_h/2':>14}  {'err_h':>12}  {'err_h/2':>12}")
 print("-" * 70)
 
-num_points = min(len(x_h), 12)
+# Выводим примерно 10 точек для краткого обзора
+num_points = min(len(x_h), 10)
 step_indices = max(1, len(x_h) // num_points)
+
 for i in range(0, len(x_h), step_indices):
-    xi = x_h[i]
-    ye = y_exact(xi)
-    yh = y_h[i]
-    yh2 = y_h2_on_h[i]
-    print(f"{xi:8.4f}  {ye:14.8f}  {yh:14.8f}  {yh2:14.8f}  {err_h[i]:12.2e}  {err_h2[i]:12.2e}")
+    xi = x_h[i]                    # Текущее значение x
+    ye = y_exact(xi)               # Точное решение
+    yh = y_h[i]                    # Численное решение (шаг h)
+    yh2 = y_h2_on_h[i]             # Численное решение (шаг h/2)
+    eh = err_h[i]                  # Погрешность при шаге h
+    eh2 = err_h2[i]                # Погрешность при шаге h/2
+    
+    # Форматированный вывод строки таблицы
+    # .4f — 4 знака после запятой для x
+    # .8f — 8 знаков для y
+    # .2e — научный формат для погрешностей
+    print(f"{xi:8.4f}  {ye:14.8f}  {yh:14.8f}  {yh2:14.8f}  {eh:12.2e}  {eh2:12.2e}")
 
-print(f"\nМаксимальная погрешность при h:   {max_err_h:.8e}")
-print(f"Максимальная погрешность при h/2: {max_err_h2:.8e}")
+# Вывод максимальных погрешностей
+print(f"\nМаксимальная абсолютная погрешность:")
+print(f"  При шаге h = {h}:     {max_err_h:.8e}")
+print(f"  При шаге h/2 = {h/2}: {max_err_h2:.8e}")
+
+# Вывод оценки порядка точности
 if p_est is not None:
-    print(f"Оценка порядка точности p ≈ log2(E_h / E_{{h/2}}) = {p_est:.4f}")
-    print("(Теоретический порядок для явного метода Эйлера: 1)")
+    print(f"\nОценка фактического порядка точности:")
+    print(f"  p ≈ log₂(E_h / E_{{h/2}}) = log₂({max_err_h:.4e} / {max_err_h2:.4e})")
+    print(f"  p ≈ {p_est:.4f}")
+    print(f"  Теоретический порядок для явного метода Эйлера: 1")
+    
+    # Анализ близости к теоретическому порядку
+    if 0.8 <= p_est <= 1.2:
+        print("  ✓ Порядок близок к теоретическому (1.0)")
+    else:
+        print("  ⚠ Порядок отличается от теоретического — проверьте ввод или уменьшите шаг")
+else:
+    print("\nОценка порядка невозможна (погрешность равна нулю).")
 
-# ------------------------------------------------------------
-# Создание Excel-файла
-# ------------------------------------------------------------
-wb = Workbook()
 
-# Лист 1: Таблица сравнения
-ws_table = wb.active
-ws_table.title = "Сравнение"
-headers = ["x", "y_exact", "y_h", "y_h/2", "err_h", "err_h/2"]
-for col_idx, header in enumerate(headers, 1):
-    ws_table.cell(row=1, column=col_idx, value=header)
+# ----- Шаг 7: Сохранение результатов в CSV-файлы -----
+print("\n" + "-" * 40)
+print("Сохранение результатов в файлы...")
 
-for i in range(len(x_h)):
-    ws_table.cell(row=i+2, column=1, value=x_h[i])
-    ws_table.cell(row=i+2, column=2, value=y_exact(x_h[i]))
-    ws_table.cell(row=i+2, column=3, value=y_h[i])
-    ws_table.cell(row=i+2, column=4, value=y_h2_on_h[i])
-    ws_table.cell(row=i+2, column=5, value=err_h[i])
-    ws_table.cell(row=i+2, column=6, value=err_h2[i])
+# Файл 1: Таблица сравнения в узлах сетки h
+# Содержит полную таблицу значений и погрешностей
+with open('comparison_h.csv', 'w', newline='', encoding='utf-8') as file:
+    writer = csv.writer(file)
+    # Заголовки столбцов
+    writer.writerow(['x', 'y_exact', 'y_h', 'y_h/2', 'err_h', 'err_h/2'])
+    # Построчная запись данных
+    for i in range(len(x_h)):
+        writer.writerow([
+            x_h[i],           # Аргумент x
+            y_exact(x_h[i]),  # Точное решение
+            y_h[i],           # Приближённое решение (шаг h)
+            y_h2_on_h[i],     # Приближённое решение (шаг h/2)
+            err_h[i],         # Погрешность (шаг h)
+            err_h2[i]         # Погрешность (шаг h/2)
+        ])
 
-# Лист 2: Данные для графиков и диаграммы
-ws_chart = wb.create_sheet("Графики")
+# Файл 2: Точное решение на плотной сетке (для гладкого графика)
+with open('graph_exact.csv', 'w', newline='', encoding='utf-8') as file:
+    writer = csv.writer(file)
+    writer.writerow(['x', 'y_exact'])
+    for i in range(len(x_dense)):
+        writer.writerow([x_dense[i], y_dense[i]])
 
-# 1. Точное решение (плотная сетка) — колонки A, B
-ws_chart.cell(row=1, column=1, value="x_dense")
-ws_chart.cell(row=1, column=2, value="y_exact_dense")
-for i in range(len(x_dense)):
-    ws_chart.cell(row=i+2, column=1, value=x_dense[i])
-    ws_chart.cell(row=i+2, column=2, value=y_dense[i])
+# Файл 3: Численные решения (оба шага)
+# Каждая строка содержит данные для обоих методов
+with open('graph_euler.csv', 'w', newline='', encoding='utf-8') as file:
+    writer = csv.writer(file)
+    writer.writerow(['x_h', 'y_h', 'x_h2', 'y_h2'])
+    max_len = max(len(x_h), len(x_h2))
+    for i in range(max_len):
+        writer.writerow([
+            x_h[i] if i < len(x_h) else '',    # x для шага h
+            y_h[i] if i < len(y_h) else '',    # y для шага h
+            x_h2[i] if i < len(x_h2) else '',  # x для шага h/2
+            y_h2[i] if i < len(y_h2) else ''   # y для шага h/2
+        ])
 
-# 2. Решение с шагом h — колонки C, D
-ws_chart.cell(row=1, column=3, value="x_h")
-ws_chart.cell(row=1, column=4, value="y_h")
-for i in range(len(x_h)):
-    ws_chart.cell(row=i+2, column=3, value=x_h[i])
-    ws_chart.cell(row=i+2, column=4, value=y_h[i])
+# Файл 4: Погрешности (для графика в логарифмическом масштабе)
+with open('errors.csv', 'w', newline='', encoding='utf-8') as file:
+    writer = csv.writer(file)
+    writer.writerow(['x', 'err_h', 'err_h/2'])
+    for i in range(len(x_h)):
+        writer.writerow([x_h[i], err_h[i], err_h2[i]])
 
-# 3. Решение с шагом h/2 — колонки E, F
-ws_chart.cell(row=1, column=5, value="x_h2")
-ws_chart.cell(row=1, column=6, value="y_h2")
-for i in range(len(x_h2)):
-    ws_chart.cell(row=i+2, column=5, value=x_h2[i])
-    ws_chart.cell(row=i+2, column=6, value=y_h2[i])
+print("✓ Файлы сохранены:")
+print("  1. comparison_h.csv  — таблица сравнения в узлах")
+print("  2. graph_exact.csv   — точное решение (плотная сетка)")
+print("  3. graph_euler.csv   — численные решения")
+print("  4. errors.csv        — погрешности методов")
 
-# 4. Погрешности — колонки G, H, I
-ws_chart.cell(row=1, column=7, value="x_err")
-ws_chart.cell(row=1, column=8, value="err_h")
-ws_chart.cell(row=1, column=9, value="err_h2")
-for i in range(len(x_h)):
-    ws_chart.cell(row=i+2, column=7, value=x_h[i])
-    ws_chart.cell(row=i+2, column=8, value=err_h[i])
-    ws_chart.cell(row=i+2, column=9, value=err_h2[i])
 
-# Определим последние заполненные строки
-max_row_dense = len(x_dense) + 1
-max_row_h = len(x_h) + 1
-max_row_h2 = len(x_h2) + 1
-max_row_err = len(x_h) + 1
+# ----- Шаг 8: Инструкция по построению графиков в Excel -----
+print("\n" + "=" * 60)
+print("ИНСТРУКЦИЯ ПО ПОСТРОЕНИЮ ГРАФИКОВ В EXCEL")
+print("=" * 60)
+print("""
+График 1: Сравнение решений
+  1. Откройте файлы graph_exact.csv и graph_euler.csv
+  2. Скопируйте данные в один лист Excel
+  3. Выделите столбцы x и y_exact (точное решение)
+  4. Добавьте ряды для y_h и y_h2
+  5. Тип диаграммы: Точечная с гладкими линиями
 
-# ------------------------------------------------------------
-# Диаграмма 1: Сравнение решений
-# ------------------------------------------------------------
-chart1 = ScatterChart()
-chart1.title = "Сравнение решений"
-chart1.x_axis.title = "x"
-chart1.y_axis.title = "y"
-chart1.style = 2
-chart1.width = 20
-chart1.height = 12
+График 2: Погрешности (логарифмический масштаб)
+  1. Откройте файл errors.csv
+  2. Выделите столбцы x, err_h и err_h/2
+  3. Вставьте точечную диаграмму
+  4. Щёлкните правой кнопкой по оси Y
+  5. Выберите "Формат оси" → "Логарифмическая шкала"
+  6. Настройте вертикальную ось: основание 10
 
-# Серия: точное решение (сплошная линия)
-y_exact_ref = Reference(ws_chart, min_col=2, min_row=1, max_row=max_row_dense)
-x_exact_ref = Reference(ws_chart, min_col=1, min_row=1, max_row=max_row_dense)
-ser_exact = Series(y_exact_ref, x_exact_ref, title="Точное")
-ser_exact.marker.symbol = None
-ser_exact.graphicalProperties.line.width = 20000
-chart1.series.append(ser_exact)
+Подпишите оси и добавьте легенду для наглядности.
+""")
 
-# Серия: Эйлер h (точки с кружками)
-y_h_ref = Reference(ws_chart, min_col=4, min_row=1, max_row=max_row_h)
-x_h_ref = Reference(ws_chart, min_col=3, min_row=1, max_row=max_row_h)
-ser_h = Series(y_h_ref, x_h_ref, title=f"h={h}")
-ser_h.marker.symbol = 'circle'
-ser_h.marker.size = 5
-chart1.series.append(ser_h)
-
-# Серия: Эйлер h/2 (точки с ромбами)
-y_h2_ref = Reference(ws_chart, min_col=6, min_row=1, max_row=max_row_h2)
-x_h2_ref = Reference(ws_chart, min_col=5, min_row=1, max_row=max_row_h2)
-ser_h2 = Series(y_h2_ref, x_h2_ref, title=f"h={h/2}")
-ser_h2.marker.symbol = 'diamond'
-ser_h2.marker.size = 4
-chart1.series.append(ser_h2)
-
-ws_chart.add_chart(chart1, "K1")  # размещаем правее таблицы
-
-# ------------------------------------------------------------
-# Диаграмма 2: Погрешности (логарифмическая шкала Y)
-# ------------------------------------------------------------
-chart2 = ScatterChart()
-chart2.title = "Погрешности"
-chart2.x_axis.title = "x"
-chart2.y_axis.title = "Абсолютная погрешность"
-chart2.style = 2
-chart2.width = 20
-chart2.height = 12
-chart2.y_axis.scaling.logBase = 10
-
-# Погрешность h
-err_h_ref = Reference(ws_chart, min_col=8, min_row=1, max_row=max_row_err)
-x_err_ref = Reference(ws_chart, min_col=7, min_row=1, max_row=max_row_err)
-ser_err_h = Series(err_h_ref, x_err_ref, title="|y_h - y_exact|")
-ser_err_h.marker.symbol = 'circle'
-ser_err_h.marker.size = 5
-chart2.series.append(ser_err_h)
-
-# Погрешность h/2
-err_h2_ref = Reference(ws_chart, min_col=9, min_row=1, max_row=max_row_err)
-ser_err_h2 = Series(err_h2_ref, x_err_ref, title="|y_{h/2} - y_exact|")
-ser_err_h2.marker.symbol = 'diamond'
-ser_err_h2.marker.size = 4
-chart2.series.append(ser_err_h2)
-
-ws_chart.add_chart(chart2, "K18")
-
-# Сохранение файла
-filename = "euler_no_numpy.xlsx"
-wb.save(filename)
-print(f"\nГотово! Результаты сохранены в файл: {filename}")
-print("Откройте его в Excel для просмотра таблицы и графиков.")
+print("Программа завершена успешно!")
