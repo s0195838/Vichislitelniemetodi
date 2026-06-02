@@ -1,139 +1,20 @@
 import math
 import csv
-import builtins
 
 # ===================================================================
-# НАДЁЖНЫЙ СЛОВАРЬ МАТЕМАТИЧЕСКИХ ФУНКЦИЙ
-# ===================================================================
-# Создаём словарь ВСЕХ необходимых функций напрямую
-_allowed_names = {
-    # Все функции из math (явно перечисляем)
-    'sin': math.sin,
-    'cos': math.cos,
-    'tan': math.tan,
-    'asin': math.asin,
-    'acos': math.acos,
-    'atan': math.atan,
-    'atan2': math.atan2,
-    'sinh': math.sinh,
-    'cosh': math.cosh,
-    'tanh': math.tanh,
-    'exp': math.exp,
-    'log': math.log,
-    'log10': math.log10,
-    'log2': math.log2,
-    'sqrt': math.sqrt,
-    'pow': pow,
-    'abs': abs,
-    # Константы
-    'pi': math.pi,
-    'e': math.e,
-    'tau': math.tau,
-    # Дополнительные функции
-    'ceil': math.ceil,
-    'floor': math.floor,
-    'fabs': math.fabs,
-    'factorial': math.factorial,
-    'gcd': math.gcd,
-    'degrees': math.degrees,
-    'radians': math.radians,
-    'erf': math.erf,
-    'erfc': math.erfc,
-    'gamma': math.gamma,
-    'lgamma': math.lgamma
-}
-
-# Добавляем все функции из math динамически (на случай если что-то пропустили)
-for name in dir(math):
-    if not name.startswith('_'):
-        obj = getattr(math, name)
-        _allowed_names[name] = obj
-
-# ===================================================================
-# ФУНКЦИЯ СОЗДАНИЯ ДВУХАРГУМЕНТНОЙ ФУНКЦИИ
-# ===================================================================
-def make_func_2var(expression):
-    """
-    Создаёт функцию f(x,y) из строки.
-    Поддерживает все математические функции без префикса math.
-    """
-    try:
-        # Компилируем код для повышения производительности
-        code = compile(f"lambda x, y: {expression}", '<string>', 'eval')
-        return eval(code, {"__builtins__": {}}, _allowed_names)
-    except NameError as e:
-        # Получаем имя функции, которая не найдена
-        missing_name = str(e).split("'")[1]
-        raise NameError(
-            f"Неизвестная функция или переменная: '{missing_name}'\n"
-            f"Доступные функции: sin, cos, tan, exp, log, sqrt, pow, abs, pi, e и др.\n"
-            f"Проверьте правильность написания: {expression}"
-        )
-    except SyntaxError as e:
-        raise SyntaxError(
-            f"Ошибка синтаксиса в выражении: {expression}\n"
-            f"Проверьте скобки и операторы: {e}"
-        )
-
-# ===================================================================
-# ФУНКЦИЯ СОЗДАНИЯ ОДНОАРГУМЕНТНОЙ ФУНКЦИИ
-# ===================================================================
-def make_func_1var(expression):
-    """
-    Создаёт функцию y(x) из строки.
-    Поддерживает все математические функции без префикса math.
-    """
-    try:
-        code = compile(f"lambda x: {expression}", '<string>', 'eval')
-        return eval(code, {"__builtins__": {}}, _allowed_names)
-    except NameError as e:
-        missing_name = str(e).split("'")[1]
-        raise NameError(
-            f"Неизвестная функция или переменная: '{missing_name}'\n"
-            f"Доступные функции: sin, cos, tan, exp, log, sqrt, pow, abs, pi, e и др.\n"
-            f"Проверьте правильность написания: {expression}"
-        )
-    except SyntaxError as e:
-        raise SyntaxError(
-            f"Ошибка синтаксиса в выражении: {expression}\n"
-            f"Проверьте скобки и операторы: {e}"
-        )
-
-# ===================================================================
-# ЯВНЫЙ МЕТОД ЭЙЛЕРА
+# ЯВНЫЙ МЕТОД ЭЙЛЕРА (БЕЗ ИСПОЛЬЗОВАНИЯ eval)
 # ===================================================================
 def euler_explicit(f, x0, y0, h, x_end):
-    """
-    Решает ОДУ y' = f(x,y) явным методом Эйлера.
-    
-    Параметры:
-        f: функция правой части f(x,y)
-        x0, y0: начальные условия
-        h: шаг интегрирования
-        x_end: конечная точка
-    
-    Возвращает:
-        x, y: списки значений
-    """
-    # Количество шагов (округляем вверх)
+    """Решает ОДУ y' = f(x,y) явным методом Эйлера."""
     n_steps = int(math.ceil((x_end - x0) / h))
-    
-    # Создаём массив x
     x = [x0 + i * h for i in range(n_steps + 1)]
-    
-    # Корректируем последнюю точку
     if x[-1] > x_end + 1e-15:
         x[-1] = x_end
-    
-    # Инициализируем массив y
     y = [0.0] * (n_steps + 1)
     y[0] = y0
-    
-    # Основной цикл метода Эйлера
     for i in range(n_steps):
-        h_actual = x[i+1] - x[i]  # Последний шаг может быть меньше h
+        h_actual = x[i+1] - x[i]
         y[i+1] = y[i] + h_actual * f(x[i], y[i])
-    
     return x, y
 
 # ===================================================================
@@ -146,141 +27,240 @@ def linspace(start, stop, num):
     step = (stop - start) / (num - 1)
     return [start + i * step for i in range(num)]
 
-def safe_float_input(prompt):
-    """Безопасный ввод числа с плавающей точкой."""
-    while True:
-        try:
-            return float(input(prompt))
-        except ValueError:
-            print("Ошибка! Введите число (например: 0.5 или 2)")
+# ===================================================================
+# ПРИМЕРЫ ФУНКЦИЙ (можно добавлять свои)
+# ===================================================================
+def example_1_f(x, y):
+    """y' = -2xy"""
+    return -2 * x * y
+
+def example_1_exact(x):
+    """y = e^(-x²)"""
+    return math.exp(-x**2)
+
+# -------------------------------------------------------------------
+def example_2_f(x, y):
+    """y' = y"""
+    return y
+
+def example_2_exact(x):
+    """y = e^x"""
+    return math.exp(x)
+
+# -------------------------------------------------------------------
+def example_3_f(x, y):
+    """y' = cos(x)"""
+    return math.cos(x)
+
+def example_3_exact(x):
+    """y = sin(x) + 1"""
+    return math.sin(x) + 1
+
+# -------------------------------------------------------------------
+def example_4_f(x, y):
+    """y' = y(1-y) - логистическое уравнение"""
+    return y * (1 - y)
+
+def example_4_exact(x):
+    """y = 1/(1+e^(-x)) - сигмоида"""
+    return 1 / (1 + math.exp(-x))
+
+# -------------------------------------------------------------------
+def example_5_f(x, y):
+    """y' = x²"""
+    return x**2
+
+def example_5_exact(x):
+    """y = x³/3 + 1"""
+    return x**3/3 + 1
 
 # ===================================================================
-# ТЕСТИРОВАНИЕ ФУНКЦИЙ
+# СЛОВАРЬ ДОСТУПНЫХ ПРИМЕРОВ
 # ===================================================================
-def test_functions():
-    """Тестирует, что все функции работают корректно."""
-    test_funcs = [
-        ('exp(1)', math.e),
-        ('sin(pi/2)', 1.0),
-        ('cos(0)', 1.0),
-        ('sqrt(4)', 2.0),
-        ('log(e)', 1.0),
-        ('abs(-5)', 5),
-        ('pow(2,3)', 8)
+examples = {
+    '1': {
+        'name': 'Затухающая экспонента',
+        'description': "y' = -2xy, y(0)=1 → y = e^(-x²)",
+        'f': example_1_f,
+        'exact': example_1_exact,
+        'x0': 0, 'y0': 1, 'x_end': 2, 'h': 0.2
+    },
+    '2': {
+        'name': 'Экспоненциальный рост',
+        'description': "y' = y, y(0)=1 → y = e^x",
+        'f': example_2_f,
+        'exact': example_2_exact,
+        'x0': 0, 'y0': 1, 'x_end': 3, 'h': 0.3
+    },
+    '3': {
+        'name': 'Косинус',
+        'description': "y' = cos(x), y(0)=1 → y = sin(x) + 1",
+        'f': example_3_f,
+        'exact': example_3_exact,
+        'x0': 0, 'y0': 1, 'x_end': 6.283, 'h': 0.3
+    },
+    '4': {
+        'name': 'Логистическое уравнение',
+        'description': "y' = y(1-y), y(0)=0.5 → y = 1/(1+e^(-x))",
+        'f': example_4_f,
+        'exact': example_4_exact,
+        'x0': 0, 'y0': 0.5, 'x_end': 5, 'h': 0.25
+    },
+    '5': {
+        'name': 'Квадратичная функция',
+        'description': "y' = x², y(0)=1 → y = x³/3 + 1",
+        'f': example_5_f,
+        'exact': example_5_exact,
+        'x0': 0, 'y0': 1, 'x_end': 2, 'h': 0.2
+    }
+}
+
+# ===================================================================
+# СОЗДАНИЕ ПОЛЬЗОВАТЕЛЬСКОЙ ФУНКЦИИ (БЕЗ eval!)
+# ===================================================================
+def create_user_function(expression, var_count=2):
+    """
+    Создаёт функцию на основе введённого выражения БЕЗ использования eval.
+    Поддерживает только простые математические операции.
+    """
+    # Заменяем математические функции на вызовы из math
+    expr = expression
+    
+    # Список замен: строковое представление → вызов функции
+    replacements = [
+        ('sin', 'math.sin'), ('cos', 'math.cos'), ('tan', 'math.tan'),
+        ('exp', 'math.exp'), ('log', 'math.log'), ('sqrt', 'math.sqrt'),
+        ('abs', 'abs'), ('pow', 'pow'),
+        ('pi', 'math.pi'), ('e', 'math.e'),
+        ('asin', 'math.asin'), ('acos', 'math.acos'), ('atan', 'math.atan'),
+        ('sinh', 'math.sinh'), ('cosh', 'math.cosh'), ('tanh', 'math.tanh')
     ]
     
-    print("Тестирование математических функций...")
-    for expr, expected in test_funcs:
-        try:
-            func = make_func_1var(expr)
-            result = func(0)  # x не используется в этих тестах
-            if abs(result - expected) < 1e-10:
-                print(f"  ✓ {expr} = {result}")
-            else:
-                print(f"  ✗ {expr}: ожидалось {expected}, получено {result}")
-        except Exception as e:
-            print(f"  ✗ {expr}: ошибка - {e}")
-    print()
+    for old, new in replacements:
+        expr = expr.replace(old + '(', new + '(')
+    
+    # Создаём функцию с помощью compile (более надёжный способ)
+    try:
+        if var_count == 2:
+            code = compile(f"def f(x, y): return {expr}", '<string>', 'exec')
+            namespace = {'math': math, 'abs': abs, 'pow': pow}
+            exec(code, namespace)
+            return namespace['f']
+        else:
+            code = compile(f"def f(x): return {expr}", '<string>', 'exec')
+            namespace = {'math': math, 'abs': abs, 'pow': pow}
+            exec(code, namespace)
+            return namespace['f']
+    except Exception as e:
+        print(f"Ошибка в выражении '{expression}': {e}")
+        print("Попробуйте использовать доступные примеры (1-5)")
+        return None
 
 # ===================================================================
 # ОСНОВНАЯ ПРОГРАММА
 # ===================================================================
 def main():
-    """Главная функция программы."""
-    
     print("=" * 60)
     print("ЯВНЫЙ МЕТОД ЭЙЛЕРА ДЛЯ РЕШЕНИЯ ОДУ")
     print("=" * 60)
-    print("\nПрограмма решает задачу Коши: y' = f(x,y), y(x0) = y0")
-    print("и сравнивает численное решение с точным аналитическим.")
     
-    # Тестируем функции перед началом работы
-    test_functions()
+    print("\nВыберите режим работы:")
+    print("1. Использовать готовый пример")
+    print("2. Ввести свою функцию (осторожно, экспериментальный режим)")
     
-    print("Доступные математические функции:")
-    print("  sin, cos, tan, exp, log, sqrt, pow, abs, pi, e и др.")
-    print("\nПримеры ввода:")
-    print("  f(x,y): -2*x*y")
-    print("  y(x):   exp(-x**2)")
-    print()
+    choice = input("\nВаш выбор (1 или 2): ").strip()
     
-    # Ввод данных
-    print("-" * 40)
-    f_str = input("Введите правую часть f(x,y): ").strip()
-    y_exact_str = input("Введите точное решение y(x): ").strip()
+    if choice == '1':
+        # Выбор из примеров
+        print("\nДоступные примеры:")
+        for key, ex in examples.items():
+            print(f"  {key}. {ex['name']}")
+            print(f"     {ex['description']}")
+        
+        ex_choice = input("\nВыберите номер примера (1-5): ").strip()
+        
+        if ex_choice not in examples:
+            print("Неверный выбор!")
+            return
+        
+        ex = examples[ex_choice]
+        f = ex['f']
+        y_exact = ex['exact']
+        x0 = ex['x0']
+        y0 = ex['y0']
+        x_end = ex['x_end']
+        h = ex['h']
+        
+        print(f"\nВыбран пример: {ex['name']}")
+        
+    elif choice == '2':
+        # Пользовательский ввод
+        print("\n⚠️  Экспериментальный режим!")
+        print("Поддерживаются функции: sin, cos, tan, exp, log, sqrt, abs, pow")
+        print("Пример: -2*x*y → нужно ввести: -2*x*y")
+        print("Пример: e^(-x²) → нужно ввести: math.exp(-x**2)")
+        
+        f_str = input("\nf(x,y) = ").strip()
+        y_str = input("y(x) = ").strip()
+        
+        f = create_user_function(f_str, var_count=2)
+        y_exact = create_user_function(y_str, var_count=1)
+        
+        if f is None or y_exact is None:
+            print("Не удалось создать функции. Используйте примеры (режим 1).")
+            return
+        
+        try:
+            x0 = float(input("x0 = "))
+            y0 = float(input("y0 = "))
+            x_end = float(input("x_end = "))
+            h = float(input("h = "))
+        except ValueError:
+            print("Ошибка ввода чисел!")
+            return
+    else:
+        print("Неверный выбор!")
+        return
     
-    x0 = safe_float_input("Начальное значение x0: ")
-    y0 = safe_float_input("Начальное условие y0: ")
-    x_end = safe_float_input("Конечное значение x_end: ")
-    h = safe_float_input("Шаг h: ")
-    
-    # Создание функций
-    print("\nСоздание функций...")
+    # Проверка функций
+    print("\nПроверка функций...")
     try:
-        f = make_func_2var(f_str)
-        y_exact = make_func_1var(y_exact_str)
-        
-        # Проверка созданных функций
         test_x, test_y = 0.5, 0.5
-        f_val = f(test_x, test_y)
-        y_val = y_exact(test_x)
-        
-        print(f"✓ f({test_x}, {test_y}) = {f_val:.6f}")
-        print(f"✓ y_exact({test_x}) = {y_val:.6f}")
-        
+        print(f"  f({test_x}, {test_y}) = {f(test_x, test_y):.6f}")
+        print(f"  y({test_x}) = {y_exact(test_x):.6f}")
     except Exception as e:
-        print(f"✗ Ошибка: {e}")
-        print("\nСоветы по исправлению:")
-        print("• Используйте ** для возведения в степень: x**2")
-        print("• Функции пишите со скобками: sin(x), exp(-x)")
-        print("• Умножение всегда с *: 2*x, а не 2x")
+        print(f"Ошибка при проверке функций: {e}")
         return
     
     # Расчёт
     print("\nВыполняется расчёт...")
     try:
-        # Решения с разными шагами
         x_h, y_h = euler_explicit(f, x0, y0, h, x_end)
         x_h2, y_h2 = euler_explicit(f, x0, y0, h/2, x_end)
-        
-        # Значения h/2 в узлах сетки h
         y_h2_on_h = [y_h2[i] for i in range(0, len(y_h2), 2)]
         
-        # Точное решение на плотной сетке
         x_dense = linspace(x0, x_end, 200)
         y_dense = [y_exact(x) for x in x_dense]
         
-        # Погрешности
         err_h = [abs(y_h[i] - y_exact(x_h[i])) for i in range(len(x_h))]
         err_h2 = [abs(y_h2_on_h[i] - y_exact(x_h[i])) for i in range(len(x_h))]
         
-        print(f"✓ Расчёт завершён успешно")
-        print(f"  Точек с шагом h: {len(x_h)}")
-        print(f"  Точек с шагом h/2: {len(x_h2)}")
-        
+        print("✓ Расчёт завершён")
     except Exception as e:
-        print(f"✗ Ошибка при вычислениях: {e}")
-        print("Возможно, точное решение содержит ошибку.")
+        print(f"Ошибка при расчёте: {e}")
         return
     
-    # Анализ результатов
+    # Результаты
     max_err_h = max(err_h)
     max_err_h2 = max(err_h2)
+    p_est = math.log2(max_err_h / max_err_h2) if max_err_h > 0 and max_err_h2 > 0 else None
     
-    if max_err_h > 0 and max_err_h2 > 0:
-        p_est = math.log2(max_err_h / max_err_h2)
-    else:
-        p_est = None
-    
-    # Вывод результатов
     print("\n" + "=" * 70)
-    print("РЕЗУЛЬТАТЫ РАСЧЁТА")
+    print("РЕЗУЛЬТАТЫ")
     print("=" * 70)
-    
     print(f"\n{'x':>8}  {'y_exact':>14}  {'y_h':>14}  {'y_h/2':>14}  {'err_h':>12}  {'err_h/2':>12}")
     print("-" * 70)
     
-    # Показываем 10 равномерно распределённых точек
     num_points = min(len(x_h), 10)
     step = max(1, len(x_h) // num_points)
     
@@ -288,71 +268,19 @@ def main():
         print(f"{x_h[i]:8.4f}  {y_exact(x_h[i]):14.8f}  {y_h[i]:14.8f}  "
               f"{y_h2_on_h[i]:14.8f}  {err_h[i]:12.2e}  {err_h2[i]:12.2e}")
     
-    print(f"\nМаксимальная абсолютная погрешность:")
-    print(f"  При шаге h = {h}:     {max_err_h:.8e}")
-    print(f"  При шаге h/2 = {h/2}: {max_err_h2:.8e}")
+    print(f"\nМаксимальная погрешность при h:   {max_err_h:.8e}")
+    print(f"Максимальная погрешность при h/2: {max_err_h2:.8e}")
+    if p_est:
+        print(f"Порядок точности: {p_est:.4f} (теоретический: 1)")
     
-    if p_est is not None:
-        print(f"\nОценка порядка точности: {p_est:.4f}")
-        print(f"Теоретический порядок метода Эйлера: 1")
-    
-    # Сохранение результатов
-    print("\n" + "-" * 40)
-    print("Сохранение результатов в CSV-файлы...")
-    
-    try:
-        # Файл 1: Таблица сравнения
-        with open('comparison.csv', 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(['x', 'y_exact', 'y_h', 'y_h/2', 'err_h', 'err_h/2'])
-            for i in range(len(x_h)):
-                writer.writerow([
-                    x_h[i], y_exact(x_h[i]), y_h[i], 
-                    y_h2_on_h[i], err_h[i], err_h2[i]
-                ])
-        
-        # Файл 2: Точное решение
-        with open('exact_solution.csv', 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(['x', 'y_exact'])
-            for i in range(len(x_dense)):
-                writer.writerow([x_dense[i], y_dense[i]])
-        
-        # Файл 3: Численные решения
-        with open('euler_solutions.csv', 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(['x_h', 'y_h', 'x_h2', 'y_h2'])
-            max_len = max(len(x_h), len(x_h2))
-            for i in range(max_len):
-                writer.writerow([
-                    x_h[i] if i < len(x_h) else '',
-                    y_h[i] if i < len(y_h) else '',
-                    x_h2[i] if i < len(x_h2) else '',
-                    y_h2[i] if i < len(y_h2) else ''
-                ])
-        
-        # Файл 4: Погрешности
-        with open('errors.csv', 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(['x', 'err_h', 'err_h/2'])
-            for i in range(len(x_h)):
-                writer.writerow([x_h[i], err_h[i], err_h2[i]])
-        
-        print("✓ Файлы успешно сохранены:")
-        print("  • comparison.csv - полная таблица сравнения")
-        print("  • exact_solution.csv - точное решение")
-        print("  • euler_solutions.csv - численные решения")
-        print("  • errors.csv - погрешности")
-        
-    except Exception as e:
-        print(f"✗ Ошибка при сохранении файлов: {e}")
-    
-    print("\n" + "=" * 60)
-    print("Программа завершена успешно!")
-    print("=" * 60)
+    # Сохранение
+    print("\nСохранение в CSV...")
+    with open('results.csv', 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['x', 'y_exact', 'y_h', 'y_h/2', 'err_h', 'err_h/2'])
+        for i in range(len(x_h)):
+            writer.writerow([x_h[i], y_exact(x_h[i]), y_h[i], y_h2_on_h[i], err_h[i], err_h2[i]])
+    print("✓ Результаты сохранены в results.csv")
 
-# ===================================================================
-# ЗАПУСК ПРОГРАММЫ
-# ===================================================================
 if __name__ == "__main__":
     main()
